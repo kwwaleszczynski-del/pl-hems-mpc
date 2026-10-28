@@ -1,0 +1,68 @@
+{
+  "homeassistant/sensor/pl_hems_mpc/bess_target_power/config": {
+    "name": "MPC Battery Power Setpoint",
+    "unique_id": "pl_hems_mpc_bess_target_w",
+    "state_topic": "hems/pl_hems_mpc/state",
+    "value_template": "{{ value_json.bess_target_w }}",
+    "unit_of_measurement": "W",
+    "device_class": "power",
+    "state_class": "measurement",
+    "device": {
+      "identifiers": [
+        "pl_hems_mpc"
+      ],
+      "name": "PL-HEMS 15-min MILP Controller",
+      "manufacturer": "open-source (pl-hems-mpc)",
+      "model": "MPC-MILP + SunSpec Modbus HIL",
+      "sw_version": "0.1.0"
+    }
+  },
+  "homeassistant/sensor/pl_hems_mpc/export_limit_w/config": {
+    "name": "MPC Dynamic Export Limit",
+    "unique_id": "pl_hems_mpc_export_limit_w",
+    "state_topic": "hems/pl_hems_mpc/state",
+    "value_template": "{{ value_json.export_limit_w }}",
+    "unit_of_measurement": "W",
+    "device_class": "power",
+    "device": {
+      "identifiers": [
+        "pl_hems_mpc"
+      ],
+      "name": "PL-HEMS 15-min MILP Controller",
+      "manufacturer": "open-source (pl-hems-mpc)",
+      "model": "MPC-MILP + SunSpec Modbus HIL",
+      "sw_version": "0.1.0"
+    }
+  },
+  "homeassistant/sensor/pl_hems_mpc/rce_price/config": {
+    "name": "PSE 15-min RCE Price",
+    "unique_id": "pl_hems_mpc_rce_pln_mwh",
+    "state_topic": "hems/pl_hems_mpc/state",
+    "value_template": "{{ value_json.rce_pln_mwh }}",
+    "unit_of_measurement": "PLN/MWh",
+    "device": {
+      "identifiers": [
+        "pl_hems_mpc"
+      ],
+      "name": "PL-HEMS 15-min MILP Controller",
+      "manufacturer": "open-source (pl-hems-mpc)",
+      "model": "MPC-MILP + SunSpec Modbus HIL",
+      "sw_version": "0.1.0"
+    }
+  },
+  "homeassistant/binary_sensor/pl_hems_mpc/zero_export_active/config": {
+    "name": "Negative RCE Zero-Export Guard",
+    "unique_id": "pl_hems_mpc_zero_export",
+    "state_topic": "hems/pl_hems_mpc/state",
+    "value_template": "{{ 'ON' if value_json.zero_export else 'OFF' }}",
+    "device": {
+      "identifiers": [
+        "pl_hems_mpc"
+      ],
+      "name": "PL-HEMS 15-min MILP Controller",
+      "manufacturer": "open-source (pl-hems-mpc)",
+      "model": "MPC-MILP + SunSpec Modbus HIL",
+      "sw_version": "0.1.0"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "PL-HEMS 15-min MILP & PSE RCE / Capacity Fee (K1-K4) Controller",
+  "country": "PL",
+  "render_readme": true,
+  "homeassistant": "2024.4.0"
+}
