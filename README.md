@@ -63,8 +63,8 @@ on 1 May 2026).
 ### 2. Commercial site on B23 and the PSE capacity fee
 
 50 kWp PV and 100 kWh / 50 kW battery on B23 with a 40 kW contracted power limit. On working days the PSE capacity fee
-(141.20 PLN/MWh across 07:00-21:59) is multiplied by $A \in \{0.17, 0.50, 0.83, 1.00\}$ depending on the ratio
-$\Delta_S$ of mean peak import to mean off-peak import (bands K1 to K4, thresholds 5 %, 10 % and 15 %).
+(141.20 PLN/MWh across 07:00-21:59) is multiplied by $`A \in \{0.17, 0.50, 0.83, 1.00\}`$ depending on the ratio
+$`\Delta_S`$ of mean peak import to mean off-peak import (bands K1 to K4, thresholds 5 %, 10 % and 15 %).
 
 | Operating mode | Energy + B23 [PLN] | Capacity fee [PLN] | Mean factor A | Working days in K1 | >40 kW penalty [PLN] | Battery wear [PLN] | Net total [PLN/yr] |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -76,7 +76,7 @@ $\Delta_S$ of mean peak import to mean off-peak import (bands K1 to K4, threshol
 
 - **Greedy self-consumption does not move the capacity fee** (10,819 vs 10,820 PLN/yr): the battery empties in the early
   afternoon and leaves the late-afternoon working hours unbuffered.
-- **Shaping the peak/off-peak import ratio puts 87 % of working days into K1** ($A = 0.17$), cutting the capacity fee by
+- **Shaping the peak/off-peak import ratio puts 87 % of working days into K1** ($`A = 0.17`$), cutting the capacity fee by
   7,693 PLN/yr (-71 %) and total net site cost by 9,941 PLN/yr.
 
 ### 3. Closed-loop Modbus TCP test and hardware watchdog
@@ -118,19 +118,19 @@ self-consumption (`40001 = 0`), then resumes zero-export curtailment at 12:45 wh
 
 ### Net-billing FIFO ledger
 
-Each month $m$ adds export credit
+Each month $`m`$ adds export credit
 
 ```math
 D_m = \sum_{t \in m} E^{\mathrm{exp}}_t \cdot \max\bigl(0,\, p^{\mathrm{RCE}}_t\bigr)
 ```
 
-to a 12-month queue. Monthly active-energy import cost $\sum_{t \in m} E^{\mathrm{imp}}_t p^{\mathrm{buy}}_t$ draws from
+to a 12-month queue. Monthly active-energy import cost $`\sum_{t \in m} E^{\mathrm{imp}}_t p^{\mathrm{buy}}_t`$ draws from
 the oldest positive bucket first; distribution charges are paid in cash. Any credit still unused 12 months after it was
-earned is settled at $\min(\text{unused},\, 0.20\, D_m)$, and the remaining 80 % expires.
+earned is settled at $`\min(\text{unused},\, 0.20\, D_m)`$, and the remaining 80 % expires.
 
 ### Thermal and battery model
 
-The building and floor slab follow a 2-node RC balance updated every $\Delta t = 0.25\text{ h}$:
+The building and floor slab follow a 2-node RC balance updated every $`\Delta t = 0.25\text{ h}`$:
 
 ```math
 C_{\mathrm{in}} \frac{dT_{\mathrm{in}}}{dt} = \frac{T_{\mathrm{slab}} - T_{\mathrm{in}}}{R_{\mathrm{is}}}
