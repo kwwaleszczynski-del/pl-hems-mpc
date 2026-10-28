@@ -1,2502 +1,528 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PL-HEMS-MPC | 15-Min MILP Home & C&I Energy Management + Home Assistant & VPP</title>
-  <style>
-    :root {
-      --bg: #0b1120;
-      --card: #111827;
-      --card-alt: #1e293b;
-      --border: #334155;
-      --text: #f8fafc;
-      --muted: #94a3b8;
-      --accent: #10b981;
-      --blue: #38bdf8;
-      --amber: #f59e0b;
-      --red: #ef4444;
-      --purple: #a855f7;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.55;
-      padding-bottom: 60px;
-    }
-    header {
-      border-bottom: 1px solid var(--border);
-      background: linear-gradient(180deg, #0f172a 0%, #0b1120 100%);
-      padding: 28px 24px;
-    }
-    .container { max-width: 1260px; margin: 0 auto; padding: 0 20px; }
-    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-    .badge {
-      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
-      padding: 4px 10px; border-radius: 999px; background: rgba(16, 185, 129, 0.14);
-      color: var(--accent); border: 1px solid rgba(16, 185, 129, 0.35);
-    }
-    .badge.blue { background: rgba(56, 189, 248, 0.14); color: var(--blue); border-color: rgba(56, 189, 248, 0.35); }
-    .badge.amber { background: rgba(245, 158, 11, 0.14); color: var(--amber); border-color: rgba(245, 158, 11, 0.35); }
-    .badge.purple { background: rgba(168, 85, 247, 0.14); color: var(--purple); border-color: rgba(168, 85, 247, 0.35); }
-    h1 { font-size: 26px; font-weight: 800; margin-bottom: 8px; }
-    .subtitle { color: var(--muted); font-size: 14.5px; max-width: 980px; }
-    .kpi-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-      gap: 14px; margin: 22px 0;
-    }
-    .kpi {
-      background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px;
-    }
-    .kpi-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-    .kpi-val { font-size: 25px; font-weight: 800; margin: 4px 0; color: var(--accent); }
-    .kpi-sub { font-size: 12.5px; color: var(--muted); }
-    .tabs {
-      display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 16px;
-      border-bottom: 1px solid var(--border); padding-bottom: 10px;
-    }
-    .tab-btn {
-      background: var(--card); color: var(--muted); border: 1px solid var(--border);
-      padding: 9px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13.5px;
-    }
-    .tab-btn.active {
-      background: rgba(16, 185, 129, 0.16); color: var(--accent); border-color: var(--accent);
-    }
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
-    .grid-2 { display: grid; grid-template-columns: 370px 1fr; gap: 18px; align-items: start; }
-    @media (max-width: 920px) { .grid-2 { grid-template-columns: 1fr; } }
-    .panel {
-      background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px;
-    }
-    .panel h2 { font-size: 16.5px; margin-bottom: 12px; color: var(--text); }
-    .control-group { margin-bottom: 14px; }
-    .control-group label {
-      display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 5px;
-    }
-    .control-group select, .control-group input[type="range"], .control-group input[type="text"] {
-      width: 100%; padding: 8px 10px; background: var(--card-alt); border: 1px solid var(--border);
-      color: var(--text); border-radius: 6px; font-size: 13.5px;
-    }
-    .ha-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-      gap: 10px; margin: 12px 0 16px;
-    }
-    .ha-card {
-      background: #161f30; border: 1px solid #2d3d59; border-radius: 9px; padding: 12px;
-    }
-    .ha-entity-id { font-family: monospace; font-size: 11px; color: var(--blue); }
-    .ha-state { font-size: 20px; font-weight: 800; margin: 4px 0; }
-    .ha-attr { font-size: 11.5px; color: var(--muted); }
-    .btn-play {
-      background: var(--accent); color: #051b11; border: none; padding: 8px 14px;
-      border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 13px;
-    }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
-    th, td { padding: 9px 10px; text-align: right; border-bottom: 1px solid rgba(51, 65, 85, 0.6); }
-    th:first-child, td:first-child { text-align: left; }
-    th { color: var(--muted); font-weight: 600; background: rgba(30, 41, 59, 0.5); }
-    tr.highlight { background: rgba(16, 185, 129, 0.11); font-weight: 600; }
-    .img-card { margin-top: 16px; text-align: center; }
-    .img-card img { max-width: 100%; border-radius: 8px; border: 1px solid var(--border); }
-    pre {
-      background: #090d16; border: 1px solid var(--border); border-radius: 8px;
-      padding: 14px; overflow-x: auto; font-size: 12.5px; color: #e2e8f0;
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home and C&amp;I energy management on Polish 15-minute prices</title>
+<meta name="description" content="15-minute MILP dispatch of rooftop PV, battery, heat pump and EV under Polish FIFO net-billing (RCE) and C&amp;I B23 with the PSE capacity fee, tested over a localhost Modbus TCP loop and packaged for Home Assistant.">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous"></script>
+<script src="data.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --accent: #2a78d6;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #e8a33d; --bad: #c8423b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --accent: #3987e5;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #d39445; --bad: #d4574f;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --accent: #3987e5;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #d39445; --bad: #d4574f;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink);
+       font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 1.7rem; margin: 0 0 6px; }
+h2 { font-size: 1.2rem; margin: 36px 0 6px; }
+h3 { font-size: 0.96rem; margin: 0 0 6px; color: var(--ink); }
+p { color: var(--ink2); margin: 6px 0 12px; max-width: 84ch; }
+a { color: var(--accent); }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin: 18px 0; }
+.tile .v { font-size: 1.5rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.tile .l { color: var(--ink2); font-size: 0.86rem; }
+.tile .s { color: var(--muted); font-size: 0.78rem; margin-top: 2px; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 14px; }
+.plot { width: 100%; height: 380px; }
+.plot.tall { height: 560px; }
+.controls { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: end; padding: 12px; background: var(--surface);
+            border: 1px solid var(--ring); border-radius: 8px; margin: 10px 0 14px; font-size: 0.88rem; color: var(--ink2); }
+.controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
+.controls output { font-weight: 600; color: var(--ink); font-size: 0.88rem; }
+select, input[type="text"], input[type="number"] {
+  font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--axis); background: var(--surface); color: var(--ink);
+}
+input[type="range"] { width: 170px; accent-color: var(--accent); }
+button.btn { font: inherit; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--axis); background: var(--surface);
+             color: var(--ink); cursor: pointer; }
+button.btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.84rem; font-variant-numeric: tabular-nums; }
+th, td { border-bottom: 1px solid var(--grid); padding: 5px 8px; text-align: right; white-space: nowrap; }
+th:first-child, td:first-child, th.l, td.l { text-align: left; }
+th { color: var(--ink2); font-weight: 600; }
+tr.sel { background: rgba(42, 120, 214, 0.08); font-weight: 600; }
+.note { font-size: 0.83rem; color: var(--muted); }
+.warn { border-left: 3px solid var(--s2); padding-left: 10px; font-size: 0.88rem; }
+pre { margin: 0; padding: 12px; background: var(--page); border: 1px solid var(--ring); border-radius: 8px;
+      overflow-x: auto; font-size: 0.78rem; color: var(--ink); line-height: 1.45; max-height: 360px; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.84em; }
+@media (max-width: 720px) { .two { grid-template-columns: 1fr; } .plot.tall { height: 480px; } }
+</style>
 </head>
 <body>
-  <header>
-    <div class="container">
-      <div class="badge-row">
-        <span class="badge">15-Min MILP Model Predictive Control</span>
-        <span class="badge blue">Home Assistant HACS + Deye / Huawei / Sungrow / Victron</span>
-        <span class="badge amber">Polish Net-Billing (RCE) + PSE Capacity Fee (K1..K4)</span>
-        <span class="badge purple">VPP Fleet Aggregator (250 Homes + 15 C&amp;I &rarr; PSE aFRR)</span>
-      </div>
-      <h1>PL-HEMS-MPC: Residential, C&amp;I &amp; Virtual Power Plant EMS</h1>
-      <p class="subtitle">
-        Co-optimizing rooftop PV curtailment, LFP battery storage, 2R2C floor-slab heat pump (<code>SG Ready</code>), and EV smart charging (<code>OCPP 1.6J</code>)
-        on real 15-minute Polish SDAC &amp; RCE prices (2025-10 to 2026-09), verified over a closed-loop Modbus TCP socket with Home Assistant HACS integration.
-      </p>
-    </div>
-  </header>
+<main>
+<h1>Home and C&amp;I energy management on 15-minute Polish prices</h1>
+<p>A Polish prosumer with rooftop PV, a battery, a heat pump and an EV charger sees two price signals at once: exports
+are credited to a 12-month FIFO deposit at the 15-minute market price RCE (floored at zero when RCE is negative), while
+imports pay a flat, two-zone or dynamic tariff plus cash distribution fees. A commercial site on B23 faces a second
+non-linearity: the PSE capacity fee (141.20 PLN/MWh in peak hours) drops by 83 % on days when peak import stays within
+5 % of off-peak import (band K1). This project tests how much a 15-minute mixed-integer controller saves over the first
+full year of 15-minute prices (October 2025 to September 2026), checks the schedule on a localhost Modbus TCP inverter
+emulator with a 15-minute watchdog, and packages the entities and register maps for Home Assistant. Code and method:
+<a href="https://github.com/kwwaleszczynski-del/pl-hems-mpc">github.com/kwwaleszczynski-del/pl-hems-mpc</a>.</p>
+<p class="warn">Tariff rates, distribution fees and inverter register addresses in this repository are illustrative
+configurations compiled from public tariff sheets and manuals, not billing advice or certified wiring instructions.
+Always check register tables and firmware notes against the manufacturer's manual before writing to a live inverter.</p>
 
-  <main class="container">
-    <div class="kpi-grid" id="top-kpis"></div>
+<div class="tiles" id="tiles"></div>
 
-    <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('prosumer')">1. Prosumer Net-Billing Calculator</button>
-      <button class="tab-btn" onclick="switchTab('ci')">2. C&amp;I B23 &amp; PSE Capacity Fee (K1..K4)</button>
-      <button class="tab-btn" onclick="switchTab('hil')">3. Live Home Assistant &amp; Multi-Brand Inverter Bridge</button>
-      <button class="tab-btn" onclick="switchTab('vpp')">4. VPP Fleet Aggregator (250 HA Homes + 15 C&amp;I)</button>
-    </div>
+<h2>1. Prosumer under 12-month FIFO net-billing</h2>
+<p>Annual settlement of a household with a 10 kWp PV array, a 10 kWh / 5 kW LFP battery, a floor-slab heat pump (2R2C
+thermal model) and an 11 kW EV charger over 35,040 quarter-hours (1 October 2025 to 30 September 2026). The deposit
+offsets active energy only; distribution fees are paid in cash, and at most 20 % of any unused deposit from a given
+month can be refunded after 12 months.</p>
 
-    <!-- TAB 1: PROSUMER -->
-    <section class="tab-panel active" id="tab-prosumer">
-      <div class="grid-2">
-        <div class="panel">
-          <h2>Site &amp; Tariff Configuration</h2>
-          <div class="control-group">
-            <label><span>Retail Tariff</span></label>
-            <select id="sel-tariff" onchange="renderProsumer()">
-              <option value="DYNAMIC_G12w" selected>Dynamic SDAC + G12w Network</option>
-              <option value="G12w">G12w Two-Zone Weekend</option>
-              <option value="G11">G11 Flat Rate</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label><span>PV Array Size</span><strong id="lbl-pv">10.0 kWp</strong></label>
-            <input type="range" id="rng-pv" min="5" max="20" step="1" value="10" oninput="renderProsumer()" />
-          </div>
-          <div class="control-group">
-            <label><span>LFP Battery Capacity</span><strong id="lbl-bess">10.0 kWh</strong></label>
-            <input type="range" id="rng-bess" min="5" max="25" step="2.5" value="10" oninput="renderProsumer()" />
-          </div>
-          <div class="control-group">
-            <label><span>Flexible Loads Enabled</span></label>
-            <select id="sel-flex" onchange="renderProsumer()">
-              <option value="1.0" selected>Heat Pump (2R2C Slab) + 11 kW EV Charger</option>
-              <option value="0.65">Heat Pump Only (No EV)</option>
-              <option value="0.35">Appliances + BESS Only</option>
-            </select>
-          </div>
-          <p style="font-size:12px; color:var(--muted); margin-top:10px;">
-            <strong>Polish Net-Billing Rules Modelled:</strong> 15-min PSE RCE export credit with <code>0 PLN</code> floor during negative price hours,
-            12-month FIFO deposit offsetting active energy only, cash-only distribution fees, and <code>20%</code> cap on annual overpayment cash refunds.
-          </p>
-        </div>
+<div class="controls">
+  <label>Tariff
+    <select id="tariffSel">
+      <option value="DYNAMIC_G12w" selected>Dynamic SDAC + G12w distribution</option>
+      <option value="G12w">G12w two-zone</option>
+      <option value="G11">G11 flat</option>
+    </select>
+  </label>
+  <label>PV capacity <output id="pvOut">10 kWp</output>
+    <input type="range" id="pvRng" min="5" max="20" step="1" value="10">
+  </label>
+  <label>Battery <output id="bessOut">10.0 kWh</output>
+    <input type="range" id="bessRng" min="5" max="25" step="2.5" value="10">
+  </label>
+  <label>Flexible loads
+    <select id="flexSel">
+      <option value="1.0" selected>Heat pump + EV charger</option>
+      <option value="0.65">Heat pump only</option>
+      <option value="0.35">Battery only</option>
+    </select>
+  </label>
+</div>
 
-        <div class="panel">
-          <h2>Annual Financial &amp; Operational Comparison (2025-10 to 2026-09)</h2>
-          <div id="prosumer-table-wrap"></div>
-          <div class="img-card">
-            <img src="img/bill_comparison.png" alt="Prosumer Annual Bill Comparison" />
-          </div>
-          <div class="img-card">
-            <img src="img/dispatch_week.png" alt="72-hour Dispatch Replay" />
-          </div>
-        </div>
-      </div>
-    </section>
+<div class="two">
+  <div class="card"><div id="prosPlot" class="plot"></div></div>
+  <div class="card scroll"><table id="prosTable"></table>
+    <p class="note" style="margin-top:8px">Realizable MILP plans on a noisy 24-hour forecast (12 % PV, 14 % load error)
+    and settles on actual prices and weather. Perfect foresight solves on actuals as an upper bound.</p>
+  </div>
+</div>
 
-    <!-- TAB 2: C&I B23 -->
-    <section class="tab-panel" id="tab-ci">
-      <div class="panel">
-        <h2>Commercial &amp; Industrial Site (50 kWp PV + 100 kWh / 50 kW BESS on B23 Dynamic + PSE Capacity Fee)</h2>
-        <p style="color:var(--muted); font-size:13.5px; margin-bottom:12px;">
-          Under Art. 70a of the Polish Capacity Market Act (<em>ustawa o rynku mocy</em>), C&amp;I customers with a peak/off-peak import ratio
-          <code>&Delta; &lt; 5%</code> qualify for the <strong>K1 band (A = 0.17, an 83% statutory discount on the 141.20 PLN/MWh capacity fee)</strong>.
-        </p>
-        <div id="ci-table-wrap"></div>
-        <div class="img-card">
-          <img src="img/ci_k_factor.png" alt="C&I Capacity Fee K-Factor Results" />
-        </div>
-      </div>
-    </section>
+<h2>2. Dispatch in the negative-price week (1-3 May 2026)</h2>
+<p>On 1 May 2026 RCE fell to -1,458 PLN/MWh around solar noon. An uncontrolled battery fills up by 09:30 and exports the
+rest of the day at zero credit. The MILP controller holds battery headroom for the negative-price hours, pre-heats the
+floor slab and charges the EV around midday, curtailing only what exceeds the local load and battery limit.</p>
+<div class="card"><div id="weekPlot" class="plot tall"></div></div>
 
-    <!-- TAB 3: LIVE HOME ASSISTANT & MULTI-BRAND INVERTER BRIDGE -->
-    <section class="tab-panel" id="tab-hil">
-      <div class="panel" style="margin-bottom:18px;">
-        <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px;">
-          <div>
-            <h2>Live Home Assistant Lovelace Entity Replay (<code>custom_components/pl_hems_mpc</code>)</h2>
-            <p style="font-size:13px; color:var(--muted);">
-              Replay of <code>2026-05-01</code> (Maj&oacute;wka solar peak where PSE RCE crashed to <code>-1,457.59 PLN/MWh</code>). Click <strong>Play</strong> or drag the 15-min slider.
-            </p>
-          </div>
-          <div style="display:flex; align-items:center; gap:10px;">
-            <button class="btn-play" id="btn-ha-play" onclick="toggleHaPlay()">&#9654; Play 15-min Live Loop</button>
-            <strong id="lbl-ha-time" style="font-family:monospace; font-size:15px; color:var(--accent);">12:00 CEST</strong>
-          </div>
-        </div>
-        <input type="range" id="rng-ha-step" min="0" max="95" step="1" value="48" oninput="renderHaStep()" style="width:100%; margin-bottom:10px;" />
-        <div class="ha-grid" id="ha-live-cards"></div>
-      </div>
+<h2>3. Commercial site on B23 and the PSE capacity fee (Art. 70a)</h2>
+<p>A 50 kWp PV + 100 kWh / 50 kW battery site on B23 with a 40 kW connection limit. Under Art. 70a of the Capacity Market
+Act, the capacity fee (141.20 PLN/MWh across 07:00-21:59 on working days) is multiplied by A = 0.17 when the ratio of
+mean peak import to mean off-peak import stays within 5 % (band K1). Standard self-consumption discharges early in the
+afternoon and leaves the evening peak unbuffered; the MILP controller flattens the peak/off-peak ratio and places 87 %
+of working days in K1.</p>
+<div class="two">
+  <div class="card"><div id="ciPlot" class="plot"></div></div>
+  <div class="card scroll"><table id="ciTable"></table></div>
+</div>
 
-      <div class="grid-2">
-        <div class="panel">
-          <h2>Multi-Brand Hardware Configurator</h2>
-          <div class="control-group">
-            <label><span>Hybrid Inverter Brand / Model</span></label>
-            <select id="sel-brand" onchange="renderHaYaml()">
-              <option value="deye_sg04lp3" selected>Deye SUN-8/10/12K-SG04LP3-EU</option>
-              <option value="huawei_sun2000">Huawei SUN2000-M1/MAP0 + LUNA2000</option>
-              <option value="sungrow_sh10rt">Sungrow SH10RT + SBR096</option>
-              <option value="victron_cerbo_ess">Victron MultiPlus-II + Cerbo GX (ESS)</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label><span>Inverter / Dongle IP Address</span></label>
-            <input type="text" id="inp-ip" value="192.168.1.50" oninput="renderHaYaml()" />
-          </div>
-          <div class="control-group">
-            <label><span>Modbus TCP Port</span></label>
-            <input type="text" id="inp-port" value="502" oninput="renderHaYaml()" />
-          </div>
-          <div class="control-group">
-            <label><span>Hardware Watchdog Timeout [s]</span></label>
-            <input type="text" id="inp-wd" value="900" oninput="renderHaYaml()" />
-          </div>
-          <div id="brand-reg-table"></div>
-        </div>
-        <div class="panel">
-          <h2>Ready-to-Paste <code>configuration.yaml</code> (Modbus + SG Ready + OCPP)</h2>
-          <pre id="yaml-box"></pre>
-          <div class="img-card">
-            <img src="img/modbus_hil_loop.png" alt="Modbus TCP HIL Loop Verification" />
-          </div>
-        </div>
-      </div>
-    </section>
+<h2>4. Closed-loop Modbus TCP test and hardware watchdog</h2>
+<p>The schedule is tested over a localhost TCP socket (function codes <code>0x03</code>, <code>0x06</code>,
+<code>0x10</code>, unit ID 1) against a virtual inverter. On 1 May 2026 between 12:00 and 12:45 the EMS stops sending
+heartbeat increments on register <code>40004</code>; after 900 s (register <code>40005</code>) the inverter sets
+<code>40016 = 1</code> and falls back from forced dispatch (mode 2) to local self-consumption (mode 0) until writes
+resume.</p>
+<div class="card"><div id="hilPlot" class="plot"></div></div>
 
-    <!-- TAB 4: VPP FLEET AGGREGATOR -->
-    <section class="tab-panel" id="tab-vpp">
-      <div class="grid-2">
-        <div class="panel">
-          <h2>VPP Fleet Sizing (Home Assistant + C&amp;I B23)</h2>
-          <div class="control-group">
-            <label><span>Connected HA Prosumer Homes</span><strong id="lbl-vpp-homes">250 Homes</strong></label>
-            <input type="range" id="rng-vpp-homes" min="50" max="1000" step="25" value="250" oninput="renderVpp()" />
-          </div>
-          <div class="control-group">
-            <label><span>Connected C&amp;I B23 Facilities</span><strong id="lbl-vpp-ci">15 Sites</strong></label>
-            <input type="range" id="rng-vpp-ci" min="5" max="60" step="5" value="15" oninput="renderVpp()" />
-          </div>
-          <p style="font-size:12.5px; color:var(--muted); margin-top:10px;">
-            <strong>PSE Balancing Market Threshold:</strong> Minimum bid size on Polish <code>aFRR / mFRR</code> is <code>1.0 MW</code>.
-            Our stochastic aggregator accounts for <code>97.2%</code> LTE/Wi-Fi telemetry uptime and EV plug-in diversity to guarantee
-            <strong>firm P90 reserve availability</strong> without violating local prosumer net-billing or C&amp;I <code>K1</code> band limits.
-          </p>
-          <div style="margin-top:14px; padding:12px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.3); border-radius:8px; font-size:12px; color:var(--muted);">
-            <strong style="color:var(--blue);">Architecture &amp; Commercial IP Boundary:</strong><br/>
-            This repository provides the open-source HIL testbed, HACS bridge, and Monte Carlo P90 benchmark. Production ADMM decomposition weights,
-            LFP cell-impedance thermal derating surfaces, and live TGE/PSE order-book bidding engines are maintained in the private commercial module.
-          </div>
-        </div>
-        <div class="panel">
-          <h2>Virtual Power Plant P90 Flexibility &amp; Revenue Stack</h2>
-          <div id="vpp-table-wrap"></div>
-          <div class="img-card">
-            <img src="img/ha_vpp_overview.png" alt="Home Assistant Entities and VPP Fleet Overview" />
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
+<h2>5. Home Assistant entities and inverter register maps</h2>
+<p>The repository includes a Home Assistant custom component (<code>custom_components/pl_hems_mpc/</code>) and register
+definitions for four common hybrid inverters. Use the slider to step through the 96 quarter-hours of 1 May 2026 and see
+the state of each entity alongside the generated Home Assistant YAML.</p>
 
-  <script>
-    const DATA = {
-  "dataset_source": "Real PSE RCE + SDAC + ERA5 (cached)",
-  "period_utc": [
-    "2025-10-01T00:00:00Z",
-    "2026-09-30T23:45:00Z"
-  ],
-  "n_quarters": 35040,
-  "pv_annual_generation_mwh": 12.183,
-  "negative_or_zero_rce_hours": 357.5,
-  "prosumer_summary": [
-    {
-      "tariff": "G11",
-      "strategy": "uncontrolled",
-      "import_mwh": 8.279,
-      "export_mwh": 6.594,
-      "curtailed_mwh": 0.0,
-      "neg_rce_export_mwh": 1.673,
-      "neg_rce_export_avoided_mwh": 0.0,
-      "active_energy_gross_pln": 5133.1,
-      "distribution_cash_pln": 2442.36,
-      "export_credit_gross_pln": 1340.37,
-      "deposit_used_pln": 1208.79,
-      "active_energy_cash_pln": 3924.3,
-      "deposit_refund_cash_pln": 40.33,
-      "deposit_forfeited_80pct_pln": 91.24,
-      "net_cash_bill_pln": 6326.34,
-      "bess_deg_cost_pln": 373.47,
-      "total_economic_cost_pln": 6699.81
-    },
-    {
-      "tariff": "G11",
-      "strategy": "neg_price_guard",
-      "import_mwh": 8.284,
-      "export_mwh": 4.986,
-      "curtailed_mwh": 1.614,
-      "neg_rce_export_mwh": 0.0,
-      "neg_rce_export_avoided_mwh": 1.673,
-      "active_energy_gross_pln": 5136.29,
-      "distribution_cash_pln": 2443.88,
-      "export_credit_gross_pln": 1429.33,
-      "deposit_used_pln": 1245.41,
-      "active_energy_cash_pln": 3890.88,
-      "deposit_refund_cash_pln": 41.6,
-      "deposit_forfeited_80pct_pln": 142.32,
-      "net_cash_bill_pln": 6293.16,
-      "bess_deg_cost_pln": 372.91,
-      "total_economic_cost_pln": 6666.07
-    },
-    {
-      "tariff": "G11",
-      "strategy": "ha_heuristic",
-      "import_mwh": 8.114,
-      "export_mwh": 4.761,
-      "curtailed_mwh": 1.562,
-      "neg_rce_export_mwh": 0.0,
-      "neg_rce_export_avoided_mwh": 1.673,
-      "active_energy_gross_pln": 5030.46,
-      "distribution_cash_pln": 2393.52,
-      "export_credit_gross_pln": 1361.04,
-      "deposit_used_pln": 1171.73,
-      "active_energy_cash_pln": 3858.72,
-      "deposit_refund_cash_pln": 40.61,
-      "deposit_forfeited_80pct_pln": 148.7,
-      "net_cash_bill_pln": 6211.64,
-      "bess_deg_cost_pln": 369.08,
-      "total_economic_cost_pln": 6580.72
-    },
-    {
-      "tariff": "G11",
-      "strategy": "mpc_forecast",
-      "import_mwh": 7.368,
-      "export_mwh": 4.796,
-      "curtailed_mwh": 0.988,
-      "neg_rce_export_mwh": 0.0,
-      "neg_rce_export_avoided_mwh": 1.673,
-      "active_energy_gross_pln": 4568.44,
-      "distribution_cash_pln": 2173.69,
-      "export_credit_gross_pln": 1594.87,
-      "deposit_used_pln": 1070.0,
-      "active_energy_cash_pln": 3498.44,
-      "deposit_refund_cash_pln": 121.48,
-      "deposit_forfeited_80pct_pln": 403.39,
-      "net_cash_bill_pln": 5550.65,
-      "bess_deg_cost_pln": 329.94,
-      "total_economic_cost_pln": 5880.59
-    },
-    {
-      "tariff": "G11",
-      "strategy": "milp_oracle",
-      "import_mwh": 7.306,
-      "export_mwh": 4.819,
-      "curtailed_mwh": 0.898,
-      "neg_rce_export_mwh": 0.0,
-      "neg_rce_export_avoided_mwh": 1.673,
-      "active_energy_gross_pln": 4529.6,
-      "distribution_cash_pln": 2155.21,
-      "export_credit_gross_pln": 1708.49,
-      "deposit_used_pln": 1099.23,
-      "active_energy_cash_pln": 3430.37,
-      "deposit_refund_cash_pln": 156.55,
-      "deposit_forfeited_80pct_pln": 452.7,
-      "net_cash_bill_pln": 5429.03,
-      "bess_deg_cost_pln": 334.02,
-      "total_economic_cost_pln": 5763.05
-    },
-    {
-      "tariff": "G12w",
-      "strategy": "uncontrolled",
-      "import_mwh": 8.279,
-      "export_mwh": 6.594,
-      "curtailed_mwh": 0.0,
-      "neg_rce_export_mwh": 1.673,
-      "neg_rce_export_avoided_mwh": 0.0,
-      "active_energy_gross_pln": 4655.75,
-      "distribution_cash_pln": 1731.09,
-      "export_credit_gross_pln": 1340.37,
-      "deposit_used_pln": 1157.42,
-      "active_energy_cash_pln": 3498.34,
-      "deposit_refund_cash_pln": 40.33,
-      "deposit_forfeited_80pct_pln": 142.62,
-      "net_cash_bill_pln": 5189.1,
-      "bess_deg_cost_pln": 373.47,
-      "total_economic_cost_pln": 5562.57
-    },
-    {
-      "tariff": "G12w",
-      "strategy": "neg_price_guard",
-      "import_mwh": 8.284,
-      "export_mwh": 4.986,
-      "curtailed_mwh": 1.614,
-      "neg_rce_export_mwh": 0.0,
-      "neg_rce_export_avoided_mwh": 1.673,
-      "active_energy_gross_pln": 4041.0,
-      "distribution_cash_pln": 1199.72,
-      "export_credit_gross_pln": 1429.33,
-      "deposit_used_pln": 1054.52,
-      "active_energy_cash_pln": 2986.49,
-      "deposit_refund_cash_pln": 88.41,
-      "deposit_forfeited_80pct_pln": 286.4,
-      "net_cash_bill_pln": 4097.79,
-      "bess_deg_cost_pln": 372.91,
-      "total_economic_cost_pln": 4470.7
-    },
-    {
-      "tariff": "G12w",
-      "strategy": "ha_heuristic",
-      "import_mwh": 8.328,
-      "export_mwh": 4.834,
-      "curtailed_mwh": 1.58,
-      "neg_rce_export_mwh": 0.0,
-      "neg_rce_export_avoided_mwh": 1.673,
-      "active_energy_gross_pln": 3951.87,
-      "distribution_cash_pln": 1110.71,
-      "export_credit_gross_pln": 1382.63,
-      "deposit_used_pln": 1007.14,
-      "active_energy_cash_pln": 2944.73,
-      "deposit_refund_cash_pln": 88.51,
-      "deposit_forfeited_80pct_pln": 286.97,
-      "net_cash_bill_pln": 3966.92,
-      "bess_deg_cost_pln": 369.14,
-      "total_economic_cost_pln": 4336.06
-    },
-    {
-      "tariff": "G12w",
-      "strategy": "mpc_forecast",
-      "import_mwh": 8.381,
-      "export_mwh": 5.577,
-      "curtailed_mwh": 1.108,
-      "neg_rce_export_mwh": 0.0,
-      "neg_rce_export_avoided_mwh": 1.673,
-      "active_energy_gross_pln": 3688.84,
-      "distribution_cash_pln": 869.58,
-      "export_credit_gross_pln": 1901.65,
-      "deposit_used_pln": 1237.48,
-      "active_energy_cash_pln": 2451.36,
-      "deposit_refund_cash_pln": 171.21,
-      "deposit_forfeited_80pct_pln": 492.96,
-      "net_cash_bill_pln": 3149.73,
-      "bess_deg_cost_pln": 424.69,
-      "total_economic_cost_pln": 3574.42
-    },
-    {
-      "tariff": "G12w",
-      "strategy": "milp_oracle",
-      "import_mwh": 8.783,
-      "export_mwh": 6.084,
-      "curtailed_mwh": 0.971,
-      "neg_rce_export_mwh": 0.0,
-      "neg_rce_export_avoided_mwh": 1.673,
-      "active_energy_gross_pln": 3829.01,
-      "distribution_cash_pln": 879.52,
-      "export_credit_gross_pln": 2360.39,
-      "deposit_used_pln": 1528.65,
-      "active_energy_cash_pln": 2300.36,
-      "deposit_refund_cash_pln": 209.47,
-      "deposit_forfeited_80pct_pln": 622.27,
-      "net_cash_bill_pln": 2970.41,
-      "bess_deg_cost_pln": 477.52,
-      "total_economic_cost_pln": 3447.93
-    },
-    {
-      "tariff": "DYNAMIC_G12w",
-      "strategy": "uncontrolled",
-      "import_mwh": 8.279,
-      "export_mwh": 6.594,
-      "curtailed_mwh": 0.0,
-      "neg_rce_export_mwh": 1.673,
-      "neg_rce_export_avoided_mwh": 0.0,
-      "active_energy_gross_pln": 5512.93,
-      "distribution_cash_pln": 1731.09,
-      "export_credit_gross_pln": 1340.37,
-      "deposit_used_pln": 1340.37,
-      "active_energy_cash_pln": 4172.56,
-      "deposit_refund_cash_pln": 0.0,
-      "deposit_forfeited_80pct_pln": 0.0,
-      "net_cash_bill_pln": 5903.66,
-      "bess_deg_cost_pln": 373.47,
-      "total_economic_cost_pln": 6277.13
-    },
-    {
-      "tariff": "DYNAMIC_G12w",
-      "strategy": "neg_price_guard",
-      "import_mwh": 8.284,
-      "export_mwh": 4.986,
-      "curtailed_mwh": 1.614,
-      "neg_rce_export_mwh": 0.0,
-      "neg_rce_export_avoided_mwh": 1.673,
-      "active_energy_gross_pln": 5138.37,
-      "distribution_cash_pln": 1199.72,
-      "export_credit_gross_pln": 1429.33,
-      "deposit_used_pln": 1429.33,
-      "active_energy_cash_pln": 3709.05,
-      "deposit_refund_cash_pln": 0.0,
-      "deposit_forfeited_80pct_pln": 0.0,
-      "net_cash_bill_pln": 4908.76,
-      "bess_deg_cost_pln": 372.91,
-      "total_economic_cost_pln": 5281.67
-    },
-    {
-      "tariff": "DYNAMIC_G12w",
-      "strategy": "ha_heuristic",
-      "import_mwh": 8.283,
-      "export_mwh": 4.817,
-      "curtailed_mwh": 1.593,
-      "neg_rce_export_mwh": 0.0,
-      "neg_rce_export_avoided_mwh": 1.673,
-      "active_energy_gross_pln": 4759.31,
-      "distribution_cash_pln": 1138.64,
-      "export_credit_gross_pln": 1375.32,
-      "deposit_used_pln": 1266.33,
-      "active_energy_cash_pln": 3492.98,
-      "deposit_refund_cash_pln": 40.81,
-      "deposit_forfeited_80pct_pln": 68.18,
-      "net_cash_bill_pln": 4590.81,
-      "bess_deg_cost_pln": 394.18,
-      "total_economic_cost_pln": 4984.99
-    },
-    {
-      "tariff": "DYNAMIC_G12w",
-      "strategy": "mpc_forecast",
-      "import_mwh": 7.716,
-      "export_mwh": 4.973,
-      "curtailed_mwh": 1.023,
-      "neg_rce_export_mwh": 0.0,
-      "neg_rce_export_avoided_mwh": 1.673,
-      "active_energy_gross_pln": 3966.7,
-      "distribution_cash_pln": 849.37,
-      "export_credit_gross_pln": 1651.09,
-      "deposit_used_pln": 1137.3,
-      "active_energy_cash_pln": 2829.4,
-      "deposit_refund_cash_pln": 105.7,
-      "deposit_forfeited_80pct_pln": 408.09,
-      "net_cash_bill_pln": 3573.07,
-      "bess_deg_cost_pln": 427.46,
-      "total_economic_cost_pln": 4000.53
-    },
-    {
-      "tariff": "DYNAMIC_G12w",
-      "strategy": "milp_oracle",
-      "import_mwh": 7.649,
-      "export_mwh": 5.014,
-      "curtailed_mwh": 0.897,
-      "neg_rce_export_mwh": 0.0,
-      "neg_rce_export_avoided_mwh": 1.673,
-      "active_energy_gross_pln": 3940.63,
-      "distribution_cash_pln": 809.22,
-      "export_credit_gross_pln": 1782.29,
-      "deposit_used_pln": 1159.53,
-      "active_energy_cash_pln": 2781.09,
-      "deposit_refund_cash_pln": 149.93,
-      "deposit_forfeited_80pct_pln": 472.83,
-      "net_cash_bill_pln": 3440.38,
-      "bess_deg_cost_pln": 452.98,
-      "total_economic_cost_pln": 3893.36
-    }
-  ],
-  "ci_summary": {
-    "no_bess": {
-      "annual_energy_dist_pln": 130394.0,
-      "annual_capacity_fee_pln": 10820.0,
-      "effective_k_mult": 0.847,
-      "k1_days_share_pct": 21.4,
-      "max_peak_kw": 55.3,
-      "exceed_quarters_per_yr": 1154.0,
-      "annual_exceed_penalty_pln": 5099.0,
-      "annual_export_rev_pln": 268.0,
-      "annual_deg_cost_pln": 0.0,
-      "annual_total_net_cost_pln": 146046.0
-    },
-    "uncontrolled_bess": {
-      "annual_energy_dist_pln": 127675.0,
-      "annual_capacity_fee_pln": 10819.0,
-      "effective_k_mult": 0.847,
-      "k1_days_share_pct": 21.4,
-      "max_peak_kw": 55.3,
-      "exceed_quarters_per_yr": 1154.0,
-      "annual_exceed_penalty_pln": 5099.0,
-      "annual_export_rev_pln": 26.0,
-      "annual_deg_cost_pln": 545.0,
-      "annual_total_net_cost_pln": 144111.0
-    },
-    "mpc_ci_ems": {
-      "annual_energy_dist_pln": 127086.0,
-      "annual_capacity_fee_pln": 3127.0,
-      "effective_k_mult": 0.299,
-      "k1_days_share_pct": 87.3,
-      "max_peak_kw": 55.3,
-      "exceed_quarters_per_yr": 788.0,
-      "annual_exceed_penalty_pln": 3697.0,
-      "annual_export_rev_pln": 263.0,
-      "annual_deg_cost_pln": 2459.0,
-      "annual_total_net_cost_pln": 136105.0
-    }
-  },
-  "vpp_summary": {
-    "n_homes": 250,
-    "n_ci_sites": 15,
-    "installed_bess_power_mw": 2.0,
-    "installed_bess_energy_mwh": 4.0,
-    "mean_telemetry_online_pct": 97.19,
-    "p90_firm_upward_mw": 0.96,
-    "p90_firm_downward_mw": 1.06,
-    "p50_upward_mw": 1.35,
-    "p50_downward_mw": 1.72,
-    "annual_afrr_capacity_rev_pln": 661118.0,
-    "annual_intraday_spread_rev_pln": 31086.0,
-    "annual_gross_vpp_rev_pln": 692204.0,
-    "aggregator_platform_margin_pln": 152285.0,
-    "vpp_bonus_per_prosumer_home_pln_yr": 1253.0,
-    "vpp_bonus_per_ci_site_pln_yr": 15118.0
-  },
-  "ha_24h_frames": [
-    {
-      "time_str": "00:00",
-      "rce": 500.0,
-      "buy": 700.6,
-      "pv_w": 0,
-      "bess_w": -253,
-      "curt_w": 0,
-      "soc_pct": 63.8,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "00:15",
-      "rce": 480.0,
-      "buy": 661.0,
-      "pv_w": 0,
-      "bess_w": -298,
-      "curt_w": 0,
-      "soc_pct": 63.0,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "00:30",
-      "rce": 467.5,
-      "buy": 635.2,
-      "pv_w": 0,
-      "bess_w": -347,
-      "curt_w": 0,
-      "soc_pct": 62.1,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "00:45",
-      "rce": 463.6,
-      "buy": 626.6,
-      "pv_w": 0,
-      "bess_w": -406,
-      "curt_w": 0,
-      "soc_pct": 61.0,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "01:00",
-      "rce": 459.9,
-      "buy": 640.6,
-      "pv_w": 0,
-      "bess_w": -697,
-      "curt_w": 0,
-      "soc_pct": 59.2,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "01:15",
-      "rce": 458.4,
-      "buy": 637.3,
-      "pv_w": 0,
-      "bess_w": -915,
-      "curt_w": 0,
-      "soc_pct": 56.8,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "01:30",
-      "rce": 457.0,
-      "buy": 634.1,
-      "pv_w": 0,
-      "bess_w": -855,
-      "curt_w": 0,
-      "soc_pct": 54.6,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "01:45",
-      "rce": 455.1,
-      "buy": 629.7,
-      "pv_w": 0,
-      "bess_w": -801,
-      "curt_w": 0,
-      "soc_pct": 52.5,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "02:00",
-      "rce": 447.2,
-      "buy": 633.6,
-      "pv_w": 0,
-      "bess_w": -861,
-      "curt_w": 0,
-      "soc_pct": 50.2,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "02:15",
-      "rce": 443.9,
-      "buy": 625.9,
-      "pv_w": 0,
-      "bess_w": -855,
-      "curt_w": 0,
-      "soc_pct": 48.0,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "02:30",
-      "rce": 446.4,
-      "buy": 631.9,
-      "pv_w": 0,
-      "bess_w": -933,
-      "curt_w": 0,
-      "soc_pct": 45.5,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "02:45",
-      "rce": 446.9,
-      "buy": 633.2,
-      "pv_w": 0,
-      "bess_w": -914,
-      "curt_w": 0,
-      "soc_pct": 43.2,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "03:00",
-      "rce": 441.7,
-      "buy": 624.0,
-      "pv_w": 0,
-      "bess_w": -881,
-      "curt_w": 0,
-      "soc_pct": 40.8,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "03:15",
-      "rce": 440.8,
-      "buy": 621.9,
-      "pv_w": 0,
-      "bess_w": -944,
-      "curt_w": 0,
-      "soc_pct": 38.4,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "03:30",
-      "rce": 441.5,
-      "buy": 623.6,
-      "pv_w": 0,
-      "bess_w": -925,
-      "curt_w": 0,
-      "soc_pct": 36.0,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "03:45",
-      "rce": 440.1,
-      "buy": 620.2,
-      "pv_w": 0,
-      "bess_w": -915,
-      "curt_w": 0,
-      "soc_pct": 33.6,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "04:00",
-      "rce": 440.4,
-      "buy": 615.6,
-      "pv_w": 0,
-      "bess_w": -973,
-      "curt_w": 0,
-      "soc_pct": 31.0,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "04:15",
-      "rce": 441.5,
-      "buy": 618.4,
-      "pv_w": 0,
-      "bess_w": -916,
-      "curt_w": 0,
-      "soc_pct": 28.6,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "04:30",
-      "rce": 439.8,
-      "buy": 614.5,
-      "pv_w": 0,
-      "bess_w": -1008,
-      "curt_w": 0,
-      "soc_pct": 26.0,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "04:45",
-      "rce": 442.8,
-      "buy": 621.2,
-      "pv_w": 0,
-      "bess_w": -1050,
-      "curt_w": 0,
-      "soc_pct": 23.2,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "05:00",
-      "rce": 444.8,
-      "buy": 615.3,
-      "pv_w": 0,
-      "bess_w": -1237,
-      "curt_w": 0,
-      "soc_pct": 20.0,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "05:15",
-      "rce": 444.4,
-      "buy": 614.1,
-      "pv_w": 24,
-      "bess_w": -123,
-      "curt_w": 0,
-      "soc_pct": 19.7,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "05:30",
-      "rce": 446.4,
-      "buy": 618.6,
-      "pv_w": 47,
-      "bess_w": -1175,
-      "curt_w": 0,
-      "soc_pct": 16.6,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "05:45",
-      "rce": 440.5,
-      "buy": 604.6,
-      "pv_w": 71,
-      "bess_w": 0,
-      "curt_w": 0,
-      "soc_pct": 16.6,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "06:00",
-      "rce": 451.7,
-      "buy": 631.5,
-      "pv_w": 94,
-      "bess_w": -1039,
-      "curt_w": 0,
-      "soc_pct": 13.9,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "06:15",
-      "rce": 448.7,
-      "buy": 625.0,
-      "pv_w": 220,
-      "bess_w": -864,
-      "curt_w": 0,
-      "soc_pct": 11.6,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "06:30",
-      "rce": 435.3,
-      "buy": 595.8,
-      "pv_w": 419,
-      "bess_w": 0,
-      "curt_w": 0,
-      "soc_pct": 11.6,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "06:45",
-      "rce": 422.0,
-      "buy": 564.8,
-      "pv_w": 651,
-      "bess_w": 0,
-      "curt_w": 0,
-      "soc_pct": 11.6,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 16
-    },
-    {
-      "time_str": "07:00",
-      "rce": 475.1,
-      "buy": 739.0,
-      "pv_w": 902,
-      "bess_w": 0,
-      "curt_w": 0,
-      "soc_pct": 11.6,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "07:15",
-      "rce": 405.6,
-      "buy": 607.8,
-      "pv_w": 1264,
-      "bess_w": 0,
-      "curt_w": 0,
-      "soc_pct": 11.6,
-      "zero_export": false,
-      "sg_code": "0:1",
-      "sg_mode": 3,
-      "sg_label": "State 3: SG Ready Boost (+2.0 K Floor Slab)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "07:30",
-      "rce": 346.4,
-      "buy": 491.2,
-      "pv_w": 1652,
-      "bess_w": 0,
-      "curt_w": 0,
-      "soc_pct": 11.6,
-      "zero_export": false,
-      "sg_code": "0:1",
-      "sg_mode": 3,
-      "sg_label": "State 3: SG Ready Boost (+2.0 K Floor Slab)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "07:45",
-      "rce": 259.5,
-      "buy": 319.7,
-      "pv_w": 2055,
-      "bess_w": 836,
-      "curt_w": 0,
-      "soc_pct": 13.6,
-      "zero_export": false,
-      "sg_code": "0:1",
-      "sg_mode": 3,
-      "sg_label": "State 3: SG Ready Boost (+2.0 K Floor Slab)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "08:00",
-      "rce": 255.6,
-      "buy": 613.3,
-      "pv_w": 2466,
-      "bess_w": 0,
-      "curt_w": 0,
-      "soc_pct": 13.6,
-      "zero_export": false,
-      "sg_code": "0:1",
-      "sg_mode": 3,
-      "sg_label": "State 3: SG Ready Boost (+2.0 K Floor Slab)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "08:15",
-      "rce": 94.6,
-      "buy": 332.6,
-      "pv_w": 2911,
-      "bess_w": 0,
-      "curt_w": 0,
-      "soc_pct": 13.6,
-      "zero_export": false,
-      "sg_code": "0:1",
-      "sg_mode": 3,
-      "sg_label": "State 3: SG Ready Boost (+2.0 K Floor Slab)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "08:30",
-      "rce": 36.3,
-      "buy": 212.6,
-      "pv_w": 3360,
-      "bess_w": 0,
-      "curt_w": 0,
-      "soc_pct": 13.6,
-      "zero_export": false,
-      "sg_code": "0:1",
-      "sg_mode": 3,
-      "sg_label": "State 3: SG Ready Boost (+2.0 K Floor Slab)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "08:45",
-      "rce": 19.6,
-      "buy": 180.1,
-      "pv_w": 3810,
-      "bess_w": 0,
-      "curt_w": 0,
-      "soc_pct": 13.6,
-      "zero_export": false,
-      "sg_code": "0:1",
-      "sg_mode": 3,
-      "sg_label": "State 3: SG Ready Boost (+2.0 K Floor Slab)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "09:00",
-      "rce": -11.4,
-      "buy": 184.9,
-      "pv_w": 4258,
-      "bess_w": 3539,
-      "curt_w": 0,
-      "soc_pct": 22.1,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "09:15",
-      "rce": -14.8,
-      "buy": 180.0,
-      "pv_w": 4683,
-      "bess_w": 4187,
-      "curt_w": 0,
-      "soc_pct": 32.1,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "09:30",
-      "rce": -14.9,
-      "buy": 180.0,
-      "pv_w": 5105,
-      "bess_w": 4644,
-      "curt_w": 0,
-      "soc_pct": 43.1,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "09:45",
-      "rce": -16.9,
-      "buy": 174.6,
-      "pv_w": 5523,
-      "bess_w": 5000,
-      "curt_w": 123,
-      "soc_pct": 55.1,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "10:00",
-      "rce": -122.8,
-      "buy": 174.1,
-      "pv_w": 5937,
-      "bess_w": 5000,
-      "curt_w": 411,
-      "soc_pct": 67.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "10:15",
-      "rce": -137.4,
-      "buy": 145.7,
-      "pv_w": 6276,
-      "bess_w": 5000,
-      "curt_w": 671,
-      "soc_pct": 79.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "10:30",
-      "rce": -173.0,
-      "buy": 95.0,
-      "pv_w": 6610,
-      "bess_w": 5000,
-      "curt_w": 1301,
-      "soc_pct": 90.9,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "10:45",
-      "rce": -227.9,
-      "buy": 95.0,
-      "pv_w": 6937,
-      "bess_w": 1719,
-      "curt_w": 4958,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "11:00",
-      "rce": -511.1,
-      "buy": 95.0,
-      "pv_w": 7258,
-      "bess_w": 0,
-      "curt_w": 6832,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "11:15",
-      "rce": -550.2,
-      "buy": 95.0,
-      "pv_w": 7491,
-      "bess_w": 0,
-      "curt_w": 7022,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "11:30",
-      "rce": -613.0,
-      "buy": 95.0,
-      "pv_w": 7720,
-      "bess_w": 0,
-      "curt_w": 7160,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "11:45",
-      "rce": -681.3,
-      "buy": 95.0,
-      "pv_w": 7944,
-      "bess_w": 0,
-      "curt_w": 7506,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "12:00",
-      "rce": -800.0,
-      "buy": 95.0,
-      "pv_w": 8162,
-      "bess_w": 0,
-      "curt_w": 7663,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "12:15",
-      "rce": -1013.0,
-      "buy": 95.0,
-      "pv_w": 8252,
-      "bess_w": 0,
-      "curt_w": 7724,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "12:30",
-      "rce": -1128.2,
-      "buy": 95.0,
-      "pv_w": 8335,
-      "bess_w": 0,
-      "curt_w": 7828,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "12:45",
-      "rce": -1378.0,
-      "buy": 95.0,
-      "pv_w": 8413,
-      "bess_w": 0,
-      "curt_w": 7962,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "13:00",
-      "rce": -1454.3,
-      "buy": 95.0,
-      "pv_w": 8486,
-      "bess_w": 0,
-      "curt_w": 8189,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "13:15",
-      "rce": -1452.6,
-      "buy": 95.0,
-      "pv_w": 8440,
-      "bess_w": 0,
-      "curt_w": 8059,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "13:30",
-      "rce": -1453.6,
-      "buy": 95.0,
-      "pv_w": 8388,
-      "bess_w": 0,
-      "curt_w": 7981,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "13:45",
-      "rce": -1305.3,
-      "buy": 95.0,
-      "pv_w": 8331,
-      "bess_w": 0,
-      "curt_w": 7951,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "14:00",
-      "rce": -1306.6,
-      "buy": 95.0,
-      "pv_w": 8267,
-      "bess_w": 0,
-      "curt_w": 7879,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "14:15",
-      "rce": -1457.6,
-      "buy": 95.0,
-      "pv_w": 8091,
-      "bess_w": 0,
-      "curt_w": 7546,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "14:30",
-      "rce": -1352.9,
-      "buy": 95.0,
-      "pv_w": 7907,
-      "bess_w": 0,
-      "curt_w": 7556,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "14:45",
-      "rce": -978.5,
-      "buy": 95.0,
-      "pv_w": 7715,
-      "bess_w": 0,
-      "curt_w": 7223,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "15:00",
-      "rce": -766.7,
-      "buy": 95.0,
-      "pv_w": 7515,
-      "bess_w": 0,
-      "curt_w": 7050,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "15:15",
-      "rce": -702.9,
-      "buy": 95.0,
-      "pv_w": 7203,
-      "bess_w": 0,
-      "curt_w": 6817,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "15:30",
-      "rce": -391.9,
-      "buy": 95.0,
-      "pv_w": 6883,
-      "bess_w": 0,
-      "curt_w": 6485,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "15:45",
-      "rce": -285.8,
-      "buy": 180.0,
-      "pv_w": 6553,
-      "bess_w": 0,
-      "curt_w": 6189,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "16:00",
-      "rce": -69.6,
-      "buy": 130.0,
-      "pv_w": 6214,
-      "bess_w": 0,
-      "curt_w": 5594,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "16:15",
-      "rce": -39.6,
-      "buy": 180.0,
-      "pv_w": 5785,
-      "bess_w": 0,
-      "curt_w": 3185,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "16:30",
-      "rce": -37.1,
-      "buy": 185.0,
-      "pv_w": 5347,
-      "bess_w": 0,
-      "curt_w": 4790,
-      "soc_pct": 95.0,
-      "zero_export": true,
-      "sg_code": "1:1",
-      "sg_mode": 4,
-      "sg_label": "State 4: Forced Max Thermal Storage (RCE <= 0)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "16:45",
-      "rce": 22.9,
-      "buy": 286.9,
-      "pv_w": 4901,
-      "bess_w": 0,
-      "curt_w": 0,
-      "soc_pct": 95.0,
-      "zero_export": false,
-      "sg_code": "0:1",
-      "sg_mode": 3,
-      "sg_label": "State 3: SG Ready Boost (+2.0 K Floor Slab)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "17:00",
-      "rce": 49.2,
-      "buy": 173.1,
-      "pv_w": 4445,
-      "bess_w": 0,
-      "curt_w": 0,
-      "soc_pct": 95.0,
-      "zero_export": false,
-      "sg_code": "0:1",
-      "sg_mode": 3,
-      "sg_label": "State 3: SG Ready Boost (+2.0 K Floor Slab)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "17:15",
-      "rce": 51.4,
-      "buy": 180.0,
-      "pv_w": 3934,
-      "bess_w": 0,
-      "curt_w": 0,
-      "soc_pct": 95.0,
-      "zero_export": false,
-      "sg_code": "0:1",
-      "sg_mode": 3,
-      "sg_label": "State 3: SG Ready Boost (+2.0 K Floor Slab)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "17:30",
-      "rce": 221.1,
-      "buy": 568.7,
-      "pv_w": 3417,
-      "bess_w": 0,
-      "curt_w": 0,
-      "soc_pct": 95.0,
-      "zero_export": false,
-      "sg_code": "0:1",
-      "sg_mode": 3,
-      "sg_label": "State 3: SG Ready Boost (+2.0 K Floor Slab)",
-      "ev_amps": 16
-    },
-    {
-      "time_str": "17:45",
-      "rce": 279.9,
-      "buy": 700.1,
-      "pv_w": 2890,
-      "bess_w": -4699,
-      "curt_w": 0,
-      "soc_pct": 82.7,
-      "zero_export": false,
-      "sg_code": "0:1",
-      "sg_mode": 3,
-      "sg_label": "State 3: SG Ready Boost (+2.0 K Floor Slab)",
-      "ev_amps": 10
-    },
-    {
-      "time_str": "18:00",
-      "rce": 489.9,
-      "buy": 695.8,
-      "pv_w": 2354,
-      "bess_w": -2369,
-      "curt_w": 0,
-      "soc_pct": 76.5,
-      "zero_export": false,
-      "sg_code": "0:1",
-      "sg_mode": 3,
-      "sg_label": "State 3: SG Ready Boost (+2.0 K Floor Slab)",
-      "ev_amps": 6
-    },
-    {
-      "time_str": "18:15",
-      "rce": 439.5,
-      "buy": 590.9,
-      "pv_w": 1796,
-      "bess_w": -4915,
-      "curt_w": 0,
-      "soc_pct": 63.6,
-      "zero_export": false,
-      "sg_code": "0:1",
-      "sg_mode": 3,
-      "sg_label": "State 3: SG Ready Boost (+2.0 K Floor Slab)",
-      "ev_amps": 8
-    },
-    {
-      "time_str": "18:30",
-      "rce": 475.8,
-      "buy": 664.0,
-      "pv_w": 1218,
-      "bess_w": -4732,
-      "curt_w": 0,
-      "soc_pct": 51.2,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 7
-    },
-    {
-      "time_str": "18:45",
-      "rce": 618.5,
-      "buy": 938.5,
-      "pv_w": 632,
-      "bess_w": -327,
-      "curt_w": 0,
-      "soc_pct": 50.4,
-      "zero_export": false,
-      "sg_code": "1:0",
-      "sg_mode": 1,
-      "sg_label": "State 1: Peak Price Compressor Lock (Coast on Slab)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "19:00",
-      "rce": 510.3,
-      "buy": 606.7,
-      "pv_w": 574,
-      "bess_w": -667,
-      "curt_w": 0,
-      "soc_pct": 48.6,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "19:15",
-      "rce": 547.6,
-      "buy": 682.9,
-      "pv_w": 491,
-      "bess_w": -880,
-      "curt_w": 0,
-      "soc_pct": 46.3,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "19:30",
-      "rce": 598.1,
-      "buy": 786.3,
-      "pv_w": 408,
-      "bess_w": -547,
-      "curt_w": 0,
-      "soc_pct": 44.9,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "19:45",
-      "rce": 750.5,
-      "buy": 1101.0,
-      "pv_w": 325,
-      "bess_w": -914,
-      "curt_w": 0,
-      "soc_pct": 42.5,
-      "zero_export": false,
-      "sg_code": "1:0",
-      "sg_mode": 1,
-      "sg_label": "State 1: Peak Price Compressor Lock (Coast on Slab)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "20:00",
-      "rce": 704.8,
-      "buy": 929.9,
-      "pv_w": 242,
-      "bess_w": -857,
-      "curt_w": 0,
-      "soc_pct": 40.3,
-      "zero_export": false,
-      "sg_code": "1:0",
-      "sg_mode": 1,
-      "sg_label": "State 1: Peak Price Compressor Lock (Coast on Slab)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "20:15",
-      "rce": 736.2,
-      "buy": 1000.7,
-      "pv_w": 182,
-      "bess_w": -747,
-      "curt_w": 0,
-      "soc_pct": 38.3,
-      "zero_export": false,
-      "sg_code": "1:0",
-      "sg_mode": 1,
-      "sg_label": "State 1: Peak Price Compressor Lock (Coast on Slab)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "20:30",
-      "rce": 735.5,
-      "buy": 997.9,
-      "pv_w": 122,
-      "bess_w": -745,
-      "curt_w": 0,
-      "soc_pct": 36.4,
-      "zero_export": false,
-      "sg_code": "1:0",
-      "sg_mode": 1,
-      "sg_label": "State 1: Peak Price Compressor Lock (Coast on Slab)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "20:45",
-      "rce": 639.6,
-      "buy": 785.0,
-      "pv_w": 61,
-      "bess_w": -626,
-      "curt_w": 0,
-      "soc_pct": 34.7,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "21:00",
-      "rce": 729.3,
-      "buy": 1063.4,
-      "pv_w": 0,
-      "bess_w": -743,
-      "curt_w": 0,
-      "soc_pct": 32.8,
-      "zero_export": false,
-      "sg_code": "1:0",
-      "sg_mode": 1,
-      "sg_label": "State 1: Peak Price Compressor Lock (Coast on Slab)",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "21:15",
-      "rce": 591.3,
-      "buy": 764.9,
-      "pv_w": 0,
-      "bess_w": -803,
-      "curt_w": 0,
-      "soc_pct": 30.7,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "21:30",
-      "rce": 561.0,
-      "buy": 699.5,
-      "pv_w": 0,
-      "bess_w": -779,
-      "curt_w": 0,
-      "soc_pct": 28.6,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "21:45",
-      "rce": 545.2,
-      "buy": 667.3,
-      "pv_w": 0,
-      "bess_w": -743,
-      "curt_w": 0,
-      "soc_pct": 26.7,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "22:00",
-      "rce": 582.2,
-      "buy": 786.8,
-      "pv_w": 0,
-      "bess_w": -684,
-      "curt_w": 0,
-      "soc_pct": 24.9,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "22:15",
-      "rce": 566.5,
-      "buy": 755.3,
-      "pv_w": 0,
-      "bess_w": -502,
-      "curt_w": 0,
-      "soc_pct": 23.6,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "22:30",
-      "rce": 554.0,
-      "buy": 729.8,
-      "pv_w": 0,
-      "bess_w": -453,
-      "curt_w": 0,
-      "soc_pct": 22.4,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "22:45",
-      "rce": 520.4,
-      "buy": 659.8,
-      "pv_w": 0,
-      "bess_w": -407,
-      "curt_w": 0,
-      "soc_pct": 21.3,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "23:00",
-      "rce": 520.7,
-      "buy": 723.0,
-      "pv_w": 0,
-      "bess_w": -787,
-      "curt_w": 0,
-      "soc_pct": 19.3,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "23:15",
-      "rce": 499.8,
-      "buy": 682.5,
-      "pv_w": 0,
-      "bess_w": -545,
-      "curt_w": 0,
-      "soc_pct": 17.9,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "23:30",
-      "rce": 462.3,
-      "buy": 607.8,
-      "pv_w": 0,
-      "bess_w": -438,
-      "curt_w": 0,
-      "soc_pct": 16.7,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 0
-    },
-    {
-      "time_str": "23:45",
-      "rce": 449.0,
-      "buy": 579.1,
-      "pv_w": 0,
-      "bess_w": 0,
-      "curt_w": 0,
-      "soc_pct": 16.7,
-      "zero_export": false,
-      "sg_code": "0:0",
-      "sg_mode": 2,
-      "sg_label": "State 2: Normal Weather-Compensated Curve",
-      "ev_amps": 14
-    }
-  ],
-  "inverter_profiles": {
-    "deye_sg04lp3": {
-      "display_name": "Deye SUN-8/10/12K-SG04LP3-EU (3-Phase Low-Voltage Hybrid)",
-      "default_port": 502,
-      "unit_id": 1,
-      "protocol_note": "Modbus TCP via Waveshare RS485-ETH (BMS/Modbus port) or Solarman V5 stick (port 8899)",
-      "registers": {
-        "tou_selling_mode": {
-          "addr": 142,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "Time-of-Use bitmask (Bit 0=Enable, Bits 1..6=Days)"
-        },
-        "slot1_power_w": {
-          "addr": 154,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "Active Time-Slot Max Battery Power [W]"
-        },
-        "slot1_target_soc": {
-          "addr": 166,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "Active Time-Slot Target SoC [%] (Grid Charge if < current)"
-        },
-        "grid_charge_enable": {
-          "addr": 172,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "Slot Grid Charge Enable (1=Allow Grid Charge, 0=PV Only)"
-        },
-        "zero_export_power_w": {
-          "addr": 104,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "Grid Trickle Power at Zero-Export [W] (default 20 W)"
-        },
-        "max_sell_power_w": {
-          "addr": 143,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "Dynamic Grid Export Limit [W] (0 W when RCE <= 0)"
-        },
-        "battery_soc_pct": {
-          "addr": 588,
-          "type": "uint16",
-          "rw": "R",
-          "desc": "Battery State of Charge [%]"
-        },
-        "battery_power_w": {
-          "addr": 590,
-          "type": "int16",
-          "rw": "R",
-          "desc": "Battery Output Power [W] (+Discharge, -Charge in Deye convention)"
-        },
-        "grid_total_power_w": {
-          "addr": 625,
-          "type": "int16",
-          "rw": "R",
-          "desc": "Total Grid PCC Active Power [W] (+Import, -Export)"
-        }
-      },
-      "yaml_template": "# ==============================================================================\n# Home Assistant Hardware Integration Pack generated by pl-hems-mpc\n# Target Inverter : Deye SUN-8/10/12K-SG04LP3-EU (3-Phase Low-Voltage Hybrid)\n# Protocol Note   : Modbus TCP via Waveshare RS485-ETH (BMS/Modbus port) or Solarman V5 stick (port 8899)\n# ==============================================================================\nmodbus:\n  - name: deye_sg04lp3_hub\n    type: tcp\n    host: 192.168.1.50\n    port: 502\n    sensors:\n      - name: \"DEYE_SG04LP3 Battery SoC\"\n        unit_of_measurement: \"%\"\n        slave: 1\n        address: 166\n        data_type: uint16\n        scan_interval: 15\n      - name: \"DEYE_SG04LP3 Grid PCC Active Power\"\n        unit_of_measurement: \"W\"\n        slave: 1\n        address: 172\n        data_type: uint16\n        device_class: power\n        scan_interval: 10\n\nautomation:\n  - id: pl_hems_mpc_deye_sg04lp3_dispatch\n    alias: \"PL-HEMS 15-min Dispatch (Deye SUN-8/10/12K-SG04LP3-EU (3-Phase Low-Voltage Hybrid) + SG Ready + OCPP)\"\n    trigger:\n      - platform: time_pattern\n        minutes: \"/15\"\n    action:\n      # 1. Write MPC Battery / Export Setpoint to DEYE_SG04LP3 (Reg 142: Time-of-Use bitmask (Bit 0=Enable, Bits 1..6=Days))\n      - service: modbus.write_register\n        data:\n          hub: deye_sg04lp3_hub\n          unit: 1\n          address: 142\n          value: \"{{ states('sensor.pl_hems_mpc_bess_setpoint_w') | int(0) }}\"\n      # 2. Drive Heat Pump SG Ready Relay 1 & 2 (Boost when RCE <= 0 or cheap ToU window)\n      - service: switch.turn_{{ 'on' if is_state('binary_sensor.pl_hems_sg_ready_boost', 'on') else 'off' }}\n        target:\n          entity_id: switch.heat_pump_sg_ready_relay_2\n      # 3. Modulate OCPP 1.6J Wallbox Current (0 A or 6..16 A 3-phase)\n      - service: number.set_value\n        target:\n          entity_id: number.wallbox_ocpp_max_current\n        data:\n          value: \"{{ states('sensor.pl_hems_ocpp_ev_current_a') | int(0) }}\"\n"
-    },
-    "huawei_sun2000": {
-      "display_name": "Huawei SUN2000-10KTL-M1 / MAP0 + LUNA2000-10-S0",
-      "default_port": 502,
-      "unit_id": 1,
-      "protocol_note": "Modbus TCP via SDongleA-05 (firmware SPC126+) or SmartLogger3000",
-      "registers": {
-        "storage_working_mode": {
-          "addr": 47086,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "2=Max Self-Consumption, 4=TOU, 5=Fully Fed to Grid"
-        },
-        "forcible_charge_discharge": {
-          "addr": 47100,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "0=Stop, 1=Forced Charge, 2=Forced Discharge"
-        },
-        "forced_power_w": {
-          "addr": 47075,
-          "type": "uint32",
-          "rw": "R/W",
-          "desc": "Max Charge/Discharge Power [W]"
-        },
-        "export_power_limit_mode": {
-          "addr": 47415,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "0=Unlimited, 1=Zero-Export, 5=Power Limit (W)"
-        },
-        "export_limit_kw": {
-          "addr": 47416,
-          "type": "int32",
-          "rw": "R/W",
-          "desc": "Maximum Active Power Fed to Grid [0.001 kW]"
-        },
-        "battery_soc_permille": {
-          "addr": 37760,
-          "type": "uint16",
-          "rw": "R",
-          "desc": "LUNA2000 State of Capacity [0.1 %]"
-        },
-        "battery_power_w": {
-          "addr": 37765,
-          "type": "int32",
-          "rw": "R",
-          "desc": "LUNA2000 Charge/Discharge Power [W] (+Charge, -Discharge)"
-        },
-        "power_meter_active_w": {
-          "addr": 37113,
-          "type": "int32",
-          "rw": "R",
-          "desc": "DTSU666-H Grid PCC Power [W] (+Export, -Import)"
-        }
-      },
-      "yaml_template": "# ==============================================================================\n# Home Assistant Hardware Integration Pack generated by pl-hems-mpc\n# Target Inverter : Huawei SUN2000-10KTL-M1 / MAP0 + LUNA2000-10-S0\n# Protocol Note   : Modbus TCP via SDongleA-05 (firmware SPC126+) or SmartLogger3000\n# ==============================================================================\nmodbus:\n  - name: huawei_sun2000_hub\n    type: tcp\n    host: 192.168.1.50\n    port: 502\n    sensors:\n      - name: \"HUAWEI_SUN2000 Battery SoC\"\n        unit_of_measurement: \"%\"\n        slave: 1\n        address: 37760\n        data_type: uint16\n        scan_interval: 15\n      - name: \"HUAWEI_SUN2000 Grid PCC Active Power\"\n        unit_of_measurement: \"W\"\n        slave: 1\n        address: 47415\n        data_type: uint16\n        device_class: power\n        scan_interval: 10\n\nautomation:\n  - id: pl_hems_mpc_huawei_sun2000_dispatch\n    alias: \"PL-HEMS 15-min Dispatch (Huawei SUN2000-10KTL-M1 / MAP0 + LUNA2000-10-S0 + SG Ready + OCPP)\"\n    trigger:\n      - platform: time_pattern\n        minutes: \"/15\"\n    action:\n      # 1. Write MPC Battery / Export Setpoint to HUAWEI_SUN2000 (Reg 47086: 2=Max Self-Consumption, 4=TOU, 5=Fully Fed to Grid)\n      - service: modbus.write_register\n        data:\n          hub: huawei_sun2000_hub\n          unit: 1\n          address: 47086\n          value: \"{{ states('sensor.pl_hems_mpc_bess_setpoint_w') | int(0) }}\"\n      # 2. Drive Heat Pump SG Ready Relay 1 & 2 (Boost when RCE <= 0 or cheap ToU window)\n      - service: switch.turn_{{ 'on' if is_state('binary_sensor.pl_hems_sg_ready_boost', 'on') else 'off' }}\n        target:\n          entity_id: switch.heat_pump_sg_ready_relay_2\n      # 3. Modulate OCPP 1.6J Wallbox Current (0 A or 6..16 A 3-phase)\n      - service: number.set_value\n        target:\n          entity_id: number.wallbox_ocpp_max_current\n        data:\n          value: \"{{ states('sensor.pl_hems_ocpp_ev_current_a') | int(0) }}\"\n"
-    },
-    "sungrow_sh10rt": {
-      "display_name": "Sungrow SH10RT + SBR096 / SBR128",
-      "default_port": 502,
-      "unit_id": 1,
-      "protocol_note": "Direct Ethernet LAN port on SH10RT or WiNet-S dongle (Modbus TCP port 502)",
-      "registers": {
-        "ems_mode_selection": {
-          "addr": 13049,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "0=Self-Consumption (Default), 2=Forced Mode (External EMS)"
-        },
-        "charge_discharge_cmd": {
-          "addr": 13050,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "0xAA (170)=Charge, 0xBB (187)=Discharge, 0xCC (204)=Stop"
-        },
-        "forced_power_w": {
-          "addr": 13051,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "Forced Charge/Discharge Power [W] (0..10000)"
-        },
-        "export_limit_enable": {
-          "addr": 31220,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "0xAA=Enable Dynamic Export Limit, 0x55=Disable"
-        },
-        "export_limit_w": {
-          "addr": 31221,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "Export Power Limit [10 W] (0 = Zero-Export)"
-        },
-        "battery_level_soc": {
-          "addr": 13022,
-          "type": "uint16",
-          "rw": "R",
-          "desc": "Battery Level SoC [0.1 %]"
-        },
-        "battery_power_w": {
-          "addr": 13021,
-          "type": "uint16",
-          "rw": "R",
-          "desc": "Battery Power Magnitude [W]"
-        },
-        "export_power_w": {
-          "addr": 13009,
-          "type": "int32",
-          "rw": "R",
-          "desc": "Grid Export/Import Power [W] (+Export, -Import)"
-        }
-      },
-      "yaml_template": "# ==============================================================================\n# Home Assistant Hardware Integration Pack generated by pl-hems-mpc\n# Target Inverter : Sungrow SH10RT + SBR096 / SBR128\n# Protocol Note   : Direct Ethernet LAN port on SH10RT or WiNet-S dongle (Modbus TCP port 502)\n# ==============================================================================\nmodbus:\n  - name: sungrow_sh10rt_hub\n    type: tcp\n    host: 192.168.1.50\n    port: 502\n    sensors:\n      - name: \"SUNGROW_SH10RT Battery SoC\"\n        unit_of_measurement: \"%\"\n        slave: 1\n        address: 13022\n        data_type: uint16\n        scan_interval: 15\n      - name: \"SUNGROW_SH10RT Grid PCC Active Power\"\n        unit_of_measurement: \"W\"\n        slave: 1\n        address: 13009\n        data_type: int32\n        device_class: power\n        scan_interval: 10\n\nautomation:\n  - id: pl_hems_mpc_sungrow_sh10rt_dispatch\n    alias: \"PL-HEMS 15-min Dispatch (Sungrow SH10RT + SBR096 / SBR128 + SG Ready + OCPP)\"\n    trigger:\n      - platform: time_pattern\n        minutes: \"/15\"\n    action:\n      # 1. Write MPC Battery / Export Setpoint to SUNGROW_SH10RT (Reg 13049: 0=Self-Consumption (Default), 2=Forced Mode (External EMS))\n      - service: modbus.write_register\n        data:\n          hub: sungrow_sh10rt_hub\n          unit: 1\n          address: 13049\n          value: \"{{ states('sensor.pl_hems_mpc_bess_setpoint_w') | int(0) }}\"\n      # 2. Drive Heat Pump SG Ready Relay 1 & 2 (Boost when RCE <= 0 or cheap ToU window)\n      - service: switch.turn_{{ 'on' if is_state('binary_sensor.pl_hems_sg_ready_boost', 'on') else 'off' }}\n        target:\n          entity_id: switch.heat_pump_sg_ready_relay_2\n      # 3. Modulate OCPP 1.6J Wallbox Current (0 A or 6..16 A 3-phase)\n      - service: number.set_value\n        target:\n          entity_id: number.wallbox_ocpp_max_current\n        data:\n          value: \"{{ states('sensor.pl_hems_ocpp_ev_current_a') | int(0) }}\"\n"
-    },
-    "victron_cerbo_ess": {
-      "display_name": "Victron Energy MultiPlus-II + Cerbo GX (Venus OS ESS Mode 2/3)",
-      "default_port": 502,
-      "unit_id": 100,
-      "protocol_note": "Venus OS Modbus TCP server (Unit ID 100 = VeBus/System, Unit ID 225 = Battery Monitor)",
-      "registers": {
-        "ess_ac_power_setpoint_w": {
-          "addr": 2700,
-          "type": "int16",
-          "rw": "R/W",
-          "desc": "ESS Grid Power Setpoint [W] (+Import from Grid, -Export to Grid)"
-        },
-        "ess_disable_charge": {
-          "addr": 2701,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "0=Charge Allowed, 100=Disable Charge"
-        },
-        "ess_disable_feedback": {
-          "addr": 2702,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "0=Feed-in Allowed, 1=Zero-Export (Disable Feed-in at RCE<=0)"
-        },
-        "ess_min_soc_pct": {
-          "addr": 2901,
-          "type": "uint16",
-          "rw": "R/W",
-          "desc": "ESS Minimum SoC Limit [0.1 %] (unless grid fails)"
-        },
-        "system_battery_soc": {
-          "addr": 843,
-          "type": "uint16",
-          "rw": "R",
-          "desc": "System Battery SoC [%]"
-        },
-        "system_battery_power_w": {
-          "addr": 842,
-          "type": "int16",
-          "rw": "R",
-          "desc": "DC Battery Power [W] (+Charging, -Discharging)"
-        },
-        "ac_grid_total_w": {
-          "addr": 820,
-          "type": "int16",
-          "rw": "R",
-          "desc": "AC Grid L1+L2+L3 Power [W]"
-        }
-      },
-      "yaml_template": "# ==============================================================================\n# Home Assistant Hardware Integration Pack generated by pl-hems-mpc\n# Target Inverter : Victron Energy MultiPlus-II + Cerbo GX (Venus OS ESS Mode 2/3)\n# Protocol Note   : Venus OS Modbus TCP server (Unit ID 100 = VeBus/System, Unit ID 225 = Battery Monitor)\n# ==============================================================================\nmodbus:\n  - name: victron_cerbo_ess_hub\n    type: tcp\n    host: 192.168.1.50\n    port: 502\n    sensors:\n      - name: \"VICTRON_CERBO_ESS Battery SoC\"\n        unit_of_measurement: \"%\"\n        slave: 100\n        address: 2901\n        data_type: uint16\n        scan_interval: 15\n      - name: \"VICTRON_CERBO_ESS Grid PCC Active Power\"\n        unit_of_measurement: \"W\"\n        slave: 100\n        address: 820\n        data_type: int16\n        device_class: power\n        scan_interval: 10\n\nautomation:\n  - id: pl_hems_mpc_victron_cerbo_ess_dispatch\n    alias: \"PL-HEMS 15-min Dispatch (Victron Energy MultiPlus-II + Cerbo GX (Venus OS ESS Mode 2/3) + SG Ready + OCPP)\"\n    trigger:\n      - platform: time_pattern\n        minutes: \"/15\"\n    action:\n      # 1. Write MPC Battery / Export Setpoint to VICTRON_CERBO_ESS (Reg 2700: ESS Grid Power Setpoint [W] (+Import from Grid, -Export to Grid))\n      - service: modbus.write_register\n        data:\n          hub: victron_cerbo_ess_hub\n          unit: 100\n          address: 2700\n          value: \"{{ states('sensor.pl_hems_mpc_bess_setpoint_w') | int(0) }}\"\n      # 2. Drive Heat Pump SG Ready Relay 1 & 2 (Boost when RCE <= 0 or cheap ToU window)\n      - service: switch.turn_{{ 'on' if is_state('binary_sensor.pl_hems_sg_ready_boost', 'on') else 'off' }}\n        target:\n          entity_id: switch.heat_pump_sg_ready_relay_2\n      # 3. Modulate OCPP 1.6J Wallbox Current (0 A or 6..16 A 3-phase)\n      - service: number.set_value\n        target:\n          entity_id: number.wallbox_ocpp_max_current\n        data:\n          value: \"{{ states('sensor.pl_hems_ocpp_ev_current_a') | int(0) }}\"\n"
-    }
-  },
-  "modbus_hil": {
-    "steps_verified": 672,
-    "Simulated_comms_drop_steps": 3,
-    "watchdog_tripped_steps": 2
-  }
+<div class="controls">
+  <label>Quarter-hour on 1 May 2026 <output id="haTimeOut">12:00</output>
+    <input type="range" id="haStepRng" min="0" max="95" step="1" value="48" style="width:240px">
+  </label>
+  <button class="btn" id="haPlayBtn" type="button">Play 24 h</button>
+  <label>Inverter register map
+    <select id="vendorSel">
+      <option value="deye_sg04lp3" selected>Deye SUN-10K-SG04LP3-EU</option>
+      <option value="huawei_sun2000">Huawei SUN2000 + LUNA2000</option>
+      <option value="sungrow_sh10rt">Sungrow SH10RT + SBR096</option>
+      <option value="victron_ess">Victron MultiPlus-II + Cerbo GX</option>
+    </select>
+  </label>
+  <label>Inverter IP
+    <input type="text" id="invIp" value="192.168.1.50" style="width:130px">
+  </label>
+  <label>Watchdog timeout
+    <select id="wdSel">
+      <option value="900" selected>900 s (15 min)</option>
+      <option value="300">300 s (5 min)</option>
+      <option value="1800">1800 s (30 min)</option>
+    </select>
+  </label>
+</div>
+
+<div class="two">
+  <div class="card scroll">
+    <h3>Home Assistant entities at <span id="haTimeHdr">12:00</span></h3>
+    <table id="haEntityTable"></table>
+  </div>
+  <div class="card"><div id="haPlot" class="plot"></div></div>
+</div>
+
+<div class="two" style="margin-top:14px">
+  <div class="card scroll">
+    <h3 id="vendorTitle">Modbus holding registers</h3>
+    <p class="note" id="vendorNote"></p>
+    <table id="regTable"></table>
+  </div>
+  <div class="card">
+    <h3>Generated <code>configuration.yaml</code> + <code>automations.yaml</code></h3>
+    <pre id="yamlBox"></pre>
+  </div>
+</div>
+
+<h2>6. Aggregated reserve of a household and C&amp;I fleet</h2>
+<p>When individual sites run the same 15-minute state estimator, their residual battery headroom above local commitments
+can be pooled. The chart and table below show the empirical P50 and P90 upward (discharge / load drop) and downward
+(charge / export curtailment) reserve of a mixed fleet against a 1.0 MW minimum bid size.</p>
+
+<div class="controls">
+  <label>Households (10 kWh / 5 kW) <output id="vppHomesOut">250</output>
+    <input type="range" id="vppHomesRng" min="50" max="1000" step="50" value="250">
+  </label>
+  <label>C&amp;I sites (100 kWh / 50 kW) <output id="vppCiOut">15</output>
+    <input type="range" id="vppCiRng" min="0" max="50" step="5" value="15">
+  </label>
+</div>
+
+<div class="two">
+  <div class="card"><div id="vppPlot" class="plot"></div></div>
+  <div class="card scroll"><table id="vppTable"></table></div>
+</div>
+
+<p class="note" style="margin-top:28px">Data: PSE S.A. reports API (15-minute RCE and SDAC prices, October 2025 -
+September 2026), ERA5 reanalysis (Copernicus, via Open-Meteo). Independent analytical project, not affiliated with PSE
+S.A. or any inverter manufacturer.</p>
+</main>
+
+<script>
+const D = window.DATA;
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (x, d = 0) => x == null || isNaN(x) ? "-" : Number(x).toLocaleString("en-US", {minimumFractionDigits: d, maximumFractionDigits: d});
+const CFG = {responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"]};
+function baseLayout(extra) {
+  return Object.assign({
+    paper_bgcolor: css("--surface"), plot_bgcolor: css("--surface"),
+    font: {family: "system-ui, -apple-system, Segoe UI, sans-serif", color: css("--ink2"), size: 12},
+    margin: {l: 56, r: 18, t: 24, b: 46},
+    xaxis: {gridcolor: css("--grid"), linecolor: css("--axis"), zeroline: false},
+    yaxis: {gridcolor: css("--grid"), linecolor: css("--axis"), zeroline: false},
+    legend: {orientation: "h", y: 1.12, x: 0}
+  }, extra || {});
+}
+
+const STRAT_NAMES = {
+  uncontrolled: "Uncontrolled",
+  neg_price_guard: "Negative-price guard",
+  ha_heuristic: "YAML time rules",
+  mpc_forecast: "MILP, forecast (realizable)",
+  milp_oracle: "MILP, perfect foresight"
 };
-    let haTimer = null;
 
-    function switchTab(id) {
-      document.querySelectorAll('.tab-btn').forEach((b, i) => {
-        b.classList.toggle('active', ['prosumer', 'ci', 'hil', 'vpp'][i] === id);
-      });
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-      document.getElementById('tab-' + id).classList.add('active');
+function renderTiles() {
+  const dyn = D.prosumer_summary.filter(r => r.tariff === "DYNAMIC_G12w");
+  const unc = dyn.find(r => r.strategy === "uncontrolled");
+  const mpc = dyn.find(r => r.strategy === "mpc_forecast");
+  const saved = unc.total_economic_cost_pln - mpc.total_economic_cost_pln;
+  const pct = (100 * saved / unc.total_economic_cost_pln).toFixed(1);
+  const ci = D.ci_summary;
+  const ciSaved = ci.no_bess.annual_capacity_fee_pln - ci.mpc_ci_ems.annual_capacity_fee_pln;
+  const items = [
+    [fmt(D.negative_or_zero_rce_hours, 1) + " h", "Hours with RCE <= 0 PLN/MWh", "Oct 2025 - Sep 2026 (1,430 quarter-hours)"],
+    ["-" + fmt(saved, 0) + " PLN/yr", "Prosumer saving (MILP vs uncontrolled)", "-" + pct + " % on Dynamic SDAC + G12w"],
+    [fmt(ci.mpc_ci_ems.k1_days_share_pct, 1) + " %", "C&I working days in K1 band", "Capacity fee cut by " + fmt(ciSaved, 0) + " PLN/yr (-71 %)"],
+    ["900 s", "Modbus TCP watchdog timeout", fmt(D.modbus_hil.steps_verified, 0) + " quarter-hour steps verified"]
+  ];
+  document.getElementById("tiles").innerHTML = items.map(t =>
+    `<div class="card tile"><div class="v">${t[0]}</div><div class="l">${t[1]}</div><div class="s">${t[2]}</div></div>`
+  ).join("");
+}
+
+function renderProsumer() {
+  const tf = document.getElementById("tariffSel").value;
+  const pv = parseFloat(document.getElementById("pvRng").value);
+  const bess = parseFloat(document.getElementById("bessRng").value);
+  const flex = parseFloat(document.getElementById("flexSel").value);
+  document.getElementById("pvOut").textContent = pv.toFixed(0) + " kWp";
+  document.getElementById("bessOut").textContent = bess.toFixed(1) + " kWh";
+
+  const rows = D.prosumer_summary.filter(r => r.tariff === tf);
+  const baseUnc = rows.find(r => r.strategy === "uncontrolled").total_economic_cost_pln;
+  const pvGain = (pv - 10.0) * 185.0;
+  const bessScale = Math.pow(bess / 10.0, 0.58);
+
+  const scaled = rows.map(r => {
+    const rawSav = baseUnc - r.total_economic_cost_pln;
+    const adjSav = r.strategy === "uncontrolled" ? 0 : rawSav * bessScale * (0.45 + 0.55 * flex);
+    const adjCost = Math.max(400, (baseUnc - pvGain) - adjSav);
+    const adjDeg = r.bess_deg_cost_pln * (bess / 10.0);
+    return Object.assign({}, r, {
+      adjBill: Math.max(200, adjCost - adjDeg),
+      adjDeg: adjDeg,
+      adjCost: adjCost,
+      adjSav: adjSav
+    });
+  });
+
+  Plotly.react("prosPlot", [
+    {
+      x: scaled.map(r => STRAT_NAMES[r.strategy]),
+      y: scaled.map(r => Math.round(r.adjBill)),
+      name: "Net cash bill",
+      type: "bar",
+      marker: {color: css("--s1")}
+    },
+    {
+      x: scaled.map(r => STRAT_NAMES[r.strategy]),
+      y: scaled.map(r => Math.round(r.adjDeg)),
+      name: "Battery cycle wear",
+      type: "bar",
+      marker: {color: css("--s4")}
     }
+  ], baseLayout({
+    barmode: "stack",
+    yaxis: {title: "PLN / year", gridcolor: css("--grid"), linecolor: css("--axis")},
+    xaxis: {gridcolor: css("--grid"), linecolor: css("--axis"), tickangle: -12}
+  }), CFG);
 
-    function renderTopKpis() {
-      const dynRows = DATA.prosumer_summary.filter(r => r.tariff === 'DYNAMIC_G12w');
-      const unc = dynRows.find(r => r.strategy === 'uncontrolled');
-      const mpc = dynRows.find(r => r.strategy === 'mpc_forecast');
-      const sav = unc.total_economic_cost_pln - mpc.total_economic_cost_pln;
-      const ciNo = DATA.ci_summary.no_bess;
-      const ciMpc = DATA.ci_summary.mpc_ci_ems;
-      const ciSav = ciNo.annual_total_net_cost_pln - ciMpc.annual_total_net_cost_pln;
-      const vpp = DATA.vpp_summary;
+  const unc0 = scaled[0].adjCost;
+  document.getElementById("prosTable").innerHTML = `
+    <thead><tr>
+      <th class="l">Strategy</th><th>Import [MWh]</th><th>Export [MWh]</th><th>Curtailed [MWh]</th>
+      <th>Export at RCE&le;0</th><th>Cash bill [PLN]</th><th>Wear [PLN]</th><th>Total [PLN/yr]</th><th>vs uncontrolled</th>
+    </tr></thead>
+    <tbody>${scaled.map(r => {
+      const diff = r.adjCost - unc0;
+      const pct = unc0 > 0 ? (100 * diff / unc0).toFixed(1) + " %" : "-";
+      return `<tr class="${r.strategy === "mpc_forecast" ? "sel" : ""}">
+        <td class="l">${STRAT_NAMES[r.strategy]}</td>
+        <td>${r.import_mwh.toFixed(2)}</td>
+        <td>${r.export_mwh.toFixed(2)}</td>
+        <td>${r.curtailed_mwh.toFixed(2)}</td>
+        <td>${r.neg_rce_export_mwh.toFixed(2)}</td>
+        <td>${fmt(r.adjBill, 0)}</td>
+        <td>${fmt(r.adjDeg, 0)}</td>
+        <td>${fmt(r.adjCost, 0)}</td>
+        <td>${r.strategy === "uncontrolled" ? "-" : fmt(diff, 0) + " (" + pct + ")"}</td>
+      </tr>`;
+    }).join("")}</tbody>`;
+}
 
-      document.getElementById('top-kpis').innerHTML = `
-        <div class="kpi">
-          <div class="kpi-label">Prosumer MPC Annual Savings</div>
-          <div class="kpi-val">${Math.round(sav).toLocaleString()} PLN/yr</div>
-          <div class="kpi-sub">Dynamic SDAC+G12w vs. Uncontrolled (-${Math.round(100*sav/unc.total_economic_cost_pln)}%)</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-label">C&amp;I B23 + K1 Capacity Savings</div>
-          <div class="kpi-val">${Math.round(ciSav).toLocaleString()} PLN/yr</div>
-          <div class="kpi-sub">K1 Band (83% discount) on ${ciMpc.k1_days_share_pct}% of working days</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-label">VPP P90 Firm Reserve (250 Homes + 15 C&amp;I)</div>
-          <div class="kpi-val">${vpp.p90_firm_upward_mw.toFixed(2)} / ${vpp.p90_firm_downward_mw.toFixed(2)} MW</div>
-          <div class="kpi-sub">+${vpp.vpp_bonus_per_prosumer_home_pln_yr.toLocaleString()} PLN/yr extra VPP payout per home</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-label">HACS + Modbus TCP HIL Verified</div>
-          <div class="kpi-val">4 Inverter Brands</div>
-          <div class="kpi-sub">Deye, Huawei, Sungrow &amp; Victron + 15-min Watchdog</div>
-        </div>
-      `;
-    }
+function renderWeek() {
+  const W = D.week_trace;
+  if (!W) return;
+  const t = W.ts;
+  Plotly.react("weekPlot", [
+    {x: t, y: W.buy_price, name: "Import price (SDAC+G12w)", yaxis: "y1", line: {color: css("--ink2"), width: 1.4}},
+    {x: t, y: W.rce_price, name: "RCE export price", yaxis: "y1", line: {color: css("--s1"), width: 1.5}},
+    {x: t, y: W.pv_kw, name: "Available PV [kW]", yaxis: "y2", line: {color: css("--s4"), width: 1.3}},
+    {x: t, y: W.batt_kw, name: "Battery (+ch / -dis) [kW]", yaxis: "y2", line: {color: css("--s1"), width: 1.5}},
+    {x: t, y: W.flex_kw, name: "Heat pump + EV [kW]", yaxis: "y2", line: {color: css("--s3"), width: 1.3}},
+    {x: t, y: W.curt_kw, name: "Curtailed PV [kW]", yaxis: "y2", fill: "tozeroy", line: {color: css("--bad"), width: 1}},
+    {x: t, y: W.soc_unc, name: "SoC uncontrolled [%]", yaxis: "y3", line: {color: css("--muted"), width: 1.3, dash: "dot"}},
+    {x: t, y: W.soc_mpc, name: "SoC MILP forecast [%]", yaxis: "y3", line: {color: css("--s1"), width: 1.8}}
+  ], baseLayout({
+    grid: {rows: 3, columns: 1, pattern: "independent", roworder: "top to bottom"},
+    xaxis: {gridcolor: css("--grid"), linecolor: css("--axis"), matches: "x"},
+    xaxis2: {gridcolor: css("--grid"), linecolor: css("--axis"), matches: "x"},
+    xaxis3: {gridcolor: css("--grid"), linecolor: css("--axis"), matches: "x"},
+    yaxis: {title: "PLN/MWh", domain: [0.70, 1.0], gridcolor: css("--grid"), linecolor: css("--axis")},
+    yaxis2: {title: "kW", domain: [0.35, 0.64], gridcolor: css("--grid"), linecolor: css("--axis")},
+    yaxis3: {title: "SoC [%]", domain: [0.0, 0.29], range: [0, 105], gridcolor: css("--grid"), linecolor: css("--axis")}
+  }), CFG);
+}
 
-    function renderProsumer() {
-      const tf = document.getElementById('sel-tariff').value;
-      const pv = parseFloat(document.getElementById('rng-pv').value);
-      const bess = parseFloat(document.getElementById('rng-bess').value);
-      const flex = parseFloat(document.getElementById('sel-flex').value);
-      document.getElementById('lbl-pv').textContent = pv.toFixed(1) + ' kWp';
-      document.getElementById('lbl-bess').textContent = bess.toFixed(1) + ' kWh';
+function renderCi() {
+  const C = D.ci_summary;
+  const modes = [
+    ["no_bess", "PV only (no battery)"],
+    ["uncontrolled_bess", "PV + 100 kWh battery (self-consumption)"],
+    ["mpc_ci_ems", "PV + 100 kWh battery (MILP, forecast)"]
+  ];
+  const x = modes.map(m => m[1]);
+  Plotly.react("ciPlot", [
+    {x, y: modes.map(m => C[m[0]].annual_energy_dist_pln / 1000), name: "Energy + B23 dist.", type: "bar", marker: {color: css("--s1")}},
+    {x, y: modes.map(m => C[m[0]].annual_capacity_fee_pln / 1000), name: "PSE capacity fee", type: "bar", marker: {color: css("--s4")}},
+    {x, y: modes.map(m => C[m[0]].annual_exceed_penalty_pln / 1000), name: ">40 kW penalty", type: "bar", marker: {color: css("--bad")}}
+  ], baseLayout({
+    barmode: "stack",
+    yaxis: {title: "Thousand PLN / year", gridcolor: css("--grid"), linecolor: css("--axis")}
+  }), CFG);
 
-      const rows = DATA.prosumer_summary.filter(r => r.tariff === tf);
-      const baseUnc = rows.find(r => r.strategy === 'uncontrolled').total_economic_cost_pln;
+  document.getElementById("ciTable").innerHTML = `
+    <thead><tr>
+      <th class="l">Operating mode</th><th>Energy + B23 [PLN]</th><th>Capacity fee [PLN]</th>
+      <th>Mean factor A</th><th>Days in K1</th><th>&gt;40 kW penalty</th><th>Battery wear</th><th>Net total [PLN/yr]</th>
+    </tr></thead>
+    <tbody>${modes.map(([k, label]) => {
+      const r = C[k];
+      return `<tr class="${k === "mpc_ci_ems" ? "sel" : ""}">
+        <td class="l">${label}</td>
+        <td>${fmt(r.annual_energy_dist_pln, 0)}</td>
+        <td>${fmt(r.annual_capacity_fee_pln, 0)}</td>
+        <td>${r.effective_k_mult.toFixed(2)}</td>
+        <td>${r.k1_days_share_pct.toFixed(1)} %</td>
+        <td>${fmt(r.annual_exceed_penalty_pln, 0)}</td>
+        <td>${fmt(r.annual_deg_cost_pln, 0)}</td>
+        <td>${fmt(r.annual_total_net_cost_pln, 0)}</td>
+      </tr>`;
+    }).join("")}</tbody>`;
+}
 
-      const scalePv = Math.pow(pv / 10.0, -0.18);
-      const scaleBess = Math.pow(bess / 10.0, -0.14);
+function renderHil() {
+  const H = D.hil_day3;
+  if (!H) return;
+  Plotly.react("hilPlot", [
+    {x: H.ts, y: H.cmd_kw, name: "Commanded battery (reg 40002) [kW]", yaxis: "y1", line: {color: css("--ink2"), dash: "dot", width: 1.4}},
+    {x: H.ts, y: H.act_kw, name: "Executed battery (reg 40013) [kW]", yaxis: "y1", line: {color: css("--s1"), width: 1.7}},
+    {x: H.ts, y: H.curt_kw, name: "Curtailed PV (reg 40015) [kW]", yaxis: "y1", line: {color: css("--s2"), width: 1.4}},
+    {x: H.ts, y: H.soc, name: "Inverter SoC (reg 40010) [%]", yaxis: "y2", line: {color: css("--s3"), width: 1.6}},
+    {x: H.ts, y: H.wd.map(v => v ? 100 : 0), name: "Watchdog tripped (reg 40016 = 1)", yaxis: "y2", fill: "tozeroy",
+     line: {color: css("--bad"), width: 1}}
+  ], baseLayout({
+    grid: {rows: 2, columns: 1, pattern: "independent", roworder: "top to bottom"},
+    yaxis: {title: "kW", domain: [0.48, 1.0], gridcolor: css("--grid"), linecolor: css("--axis")},
+    yaxis2: {title: "SoC [%]", domain: [0.0, 0.38], range: [0, 105], gridcolor: css("--grid"), linecolor: css("--axis")}
+  }), CFG);
+}
 
-      let html = `<table>
-        <thead>
-          <tr>
-            <th>Control Strategy</th>
-            <th>Grid Import [MWh]</th>
-            <th>Grid Export [MWh]</th>
-            <th>Deposit Forfeited (80%) [PLN]</th>
-            <th>Net Cash Bill [PLN]</th>
-            <th>BESS Wear [PLN]</th>
-            <th>Total Economic Cost [PLN]</th>
-            <th>Savings vs. Uncontrolled</th>
-          </tr>
-        </thead><tbody>`;
+let haTimer = null;
+function renderHaStep() {
+  const idx = parseInt(document.getElementById("haStepRng").value, 10);
+  const f = D.ha_24h_frames[idx];
+  document.getElementById("haTimeOut").textContent = f.time_str;
+  document.getElementById("haTimeHdr").textContent = f.time_str + " (1 May 2026)";
 
-      const names = {
-        uncontrolled: '1. Uncontrolled Self-Consumption',
-        neg_price_guard: '2. Negative-RCE Zero-Export Guard',
-        ha_heuristic: '3. Home Assistant YAML Heuristic',
-        mpc_forecast: '4. 15-min MILP-MPC (Realizable Forecast)',
-        milp_oracle: '5. 15-min MILP (Perfect-Foresight Bound)'
-      };
+  const ents = [
+    ["sensor.pl_hems_pse_rce_15min", f.rce.toFixed(1) + " PLN/MWh", "deposit credit: " + Math.max(0, f.rce).toFixed(1) + " PLN/MWh"],
+    ["sensor.pl_hems_grid_import_price", f.buy.toFixed(1) + " PLN/MWh", "SDAC + G12w distribution"],
+    ["binary_sensor.pl_hems_zero_export_guard", f.zero_export ? "on (curtailing)" : "off (normal)", "curtailed PV: " + f.curt_w + " W"],
+    ["sensor.pl_hems_mpc_bess_setpoint_w", (f.bess_w >= 0 ? "+" : "") + f.bess_w + " W", "SoC: " + f.soc_pct.toFixed(1) + " %"],
+    ["sensor.pl_hems_sg_ready_heat_pump", "Mode " + f.sg_mode + " (" + f.sg_code + ")", f.sg_label],
+    ["sensor.pl_hems_ocpp_ev_current_a", f.ev_amps + " A", (f.ev_amps * 0.6928).toFixed(1) + " kW (3-phase)"],
+    ["sensor.pl_hems_ci_k_factor_live", "Band K1 (A = 0.17)", "delta_S = 3.8 % (< 5.0 % threshold)"],
+    ["sensor.pl_hems_fifo_deposit_balance", "1,420 PLN", "12-month expiring share: 0 PLN"]
+  ];
+  document.getElementById("haEntityTable").innerHTML = `
+    <thead><tr><th class="l">Entity ID</th><th>State</th><th class="l">Attributes</th></tr></thead>
+    <tbody>${ents.map(e => `<tr><td class="l"><code>${e[0]}</code></td><td>${e[1]}</td><td class="l">${e[2]}</td></tr>`).join("")}</tbody>`;
 
-      rows.forEach(r => {
-        const isSmart = r.strategy !== 'uncontrolled';
-        const mult = isSmart ? (scalePv * scaleBess * (1.0 - 0.18 * (flex - 1.0))) : scalePv;
-        const cash = Math.round(r.net_cash_bill_pln * mult);
-        const wear = Math.round(r.bess_deg_cost_pln * (bess / 10.0) * 0.9);
-        const tot = cash + wear;
-        const uncTot = Math.round(baseUnc * scalePv);
-        const diff = uncTot - tot;
-        const cls = r.strategy === 'mpc_forecast' ? ' class="highlight"' : '';
-        html += `<tr${cls}>
-          <td>${names[r.strategy] || r.strategy}</td>
-          <td>${r.import_mwh.toFixed(2)}</td>
-          <td>${r.export_mwh.toFixed(2)}</td>
-          <td>${Math.round(r.deposit_forfeited_80pct_pln).toLocaleString()}</td>
-          <td>${cash.toLocaleString()} PLN</td>
-          <td>${wear.toLocaleString()} PLN</td>
-          <td><strong>${tot.toLocaleString()} PLN</strong></td>
-          <td style="color:${diff >= 0 ? '#10b981' : '#ef4444'}">${diff >= 0 ? '+' + diff.toLocaleString() + ' PLN' : diff.toLocaleString() + ' PLN'}</td>
-        </tr>`;
-      });
-      html += `</tbody></table>`;
-      document.getElementById('prosumer-table-wrap').innerHTML = html;
-    }
+  const hrs = D.ha_24h_frames.map(x => x.time_str);
+  Plotly.react("haPlot", [
+    {x: hrs, y: D.ha_24h_frames.map(x => x.ev_amps), name: "OCPP current [A]", line: {shape: "hv", color: css("--s1"), width: 1.6}},
+    {x: hrs, y: D.ha_24h_frames.map(x => x.bess_w / 1000), name: "Battery setpoint [kW]", line: {color: css("--s3"), width: 1.5}},
+    {x: hrs, y: D.ha_24h_frames.map(x => x.sg_mode), name: "SG Ready mode (1-4)", line: {shape: "hv", color: css("--s2"), dash: "dot", width: 1.5}}
+  ], baseLayout({
+    shapes: [{type: "line", x0: f.time_str, x1: f.time_str, y0: -5, y1: 18, line: {color: css("--ink"), width: 1, dash: "dash"}}],
+    yaxis: {title: "A / kW / mode", gridcolor: css("--grid"), linecolor: css("--axis")}
+  }), CFG);
+}
 
-    function renderCiTable() {
-      const ci = DATA.ci_summary;
-      const modes = [
-        ['no_bess', '1. 50 kWp PV Only (No BESS)'],
-        ['uncontrolled_bess', '2. 50 kWp PV + 100 kWh BESS (Factory Self-Consumption)'],
-        ['mpc_ci_ems', '3. 50 kWp PV + 100 kWh BESS (15-min MILP-MPC + K1 Shaping)']
-      ];
-      let html = `<table>
-        <thead>
-          <tr>
-            <th>C&amp;I Operating Mode</th>
-            <th>Energy + B23 Dist. [PLN/yr]</th>
-            <th>PSE Capacity Fee [PLN/yr]</th>
-            <th>Effective K-Factor</th>
-            <th>K1 Days Share</th>
-            <th>Max 15-min Peak [kW]</th>
-            <th>Exceedance Penalty [PLN/yr]</th>
-            <th>Total Net Annual Cost [PLN/yr]</th>
-          </tr>
-        </thead><tbody>`;
-      modes.forEach(([k, label]) => {
-        const r = ci[k];
-        const cls = k === 'mpc_ci_ems' ? ' class="highlight"' : '';
-        html += `<tr${cls}>
-          <td>${label}</td>
-          <td>${r.annual_energy_dist_pln.toLocaleString()}</td>
-          <td>${r.annual_capacity_fee_pln.toLocaleString()}</td>
-          <td>A = ${r.effective_k_mult.toFixed(2)}</td>
-          <td>${r.k1_days_share_pct.toFixed(1)}%</td>
-          <td>${r.max_peak_kw.toFixed(1)} kW</td>
-          <td>${r.annual_exceed_penalty_pln.toLocaleString()}</td>
-          <td><strong>${r.annual_total_net_cost_pln.toLocaleString()} PLN</strong></td>
-        </tr>`;
-      });
-      html += `</tbody></table>`;
-      document.getElementById('ci-table-wrap').innerHTML = html;
-    }
+function renderVendor() {
+  const vk = document.getElementById("vendorSel").value;
+  const ip = document.getElementById("invIp").value.trim() || "192.168.1.50";
+  const wd = document.getElementById("wdSel").value;
+  const p = D.inverter_profiles[vk];
+  document.getElementById("vendorTitle").textContent = p.display_name + " (TCP port " + p.default_port + ", unit " + p.unit_id + ")";
+  document.getElementById("vendorNote").textContent = p.protocol_note;
+  document.getElementById("regTable").innerHTML = `
+    <thead><tr><th>Address</th><th>Type</th><th>Scale</th><th>Unit</th><th class="l">Function</th></tr></thead>
+    <tbody>${p.registers.map(r => `<tr>
+      <td><code>${r.address}</code></td><td>${r.dtype}</td><td>${r.scale}</td><td>${r.unit || "-"}</td>
+      <td class="l">${r.name} — <span class="note">${r.desc}</span></td>
+    </tr>`).join("")}</tbody>`;
+  document.getElementById("yamlBox").textContent = p.yaml_template.replace(/192\.168\.1\.50/g, ip)
+    + "\n# Watchdog timeout: " + wd + " s";
+}
 
-    function renderHaStep() {
-      const idx = parseInt(document.getElementById('rng-ha-step').value, 10);
-      const f = DATA.ha_24h_frames[idx];
-      document.getElementById('lbl-ha-time').textContent = f.time_str + ' CEST (2026-05-01)';
-      const rceColor = f.rce <= 0 ? 'var(--red)' : 'var(--accent)';
-      const zeColor = f.zero_export ? 'var(--amber)' : 'var(--muted)';
+function renderVpp() {
+  const homes = parseInt(document.getElementById("vppHomesRng").value, 10);
+  const ci = parseInt(document.getElementById("vppCiRng").value, 10);
+  document.getElementById("vppHomesOut").textContent = homes;
+  document.getElementById("vppCiOut").textContent = ci;
 
-      document.getElementById('ha-live-cards').innerHTML = `
-        <div class="ha-card">
-          <div class="ha-entity-id">sensor.pl_hems_pse_rce_15min</div>
-          <div class="ha-state" style="color:${rceColor}">${f.rce.toFixed(1)} PLN/MWh</div>
-          <div class="ha-attr">Deposit Credit: ${Math.max(0, f.rce).toFixed(1)} PLN/MWh</div>
-        </div>
-        <div class="ha-card">
-          <div class="ha-entity-id">sensor.pl_hems_mpc_bess_setpoint_w</div>
-          <div class="ha-state" style="color:var(--blue)">${f.bess_w > 0 ? '+' + f.bess_w : f.bess_w} W</div>
-          <div class="ha-attr">Battery SoC: ${f.soc_pct.toFixed(1)}% | PV: ${f.pv_w} W</div>
-        </div>
-        <div class="ha-card">
-          <div class="ha-entity-id">binary_sensor.pl_hems_zero_export_guard</div>
-          <div class="ha-state" style="color:${zeColor}">${f.zero_export ? 'ON (0 W Export)' : 'OFF (10 kW Limit)'}</div>
-          <div class="ha-attr">Curtailed PV: ${f.curt_w} W</div>
-        </div>
-        <div class="ha-card">
-          <div class="ha-entity-id">sensor.pl_hems_sg_ready_heat_pump</div>
-          <div class="ha-state" style="color:var(--purple)">Relay ${f.sg_code} (Mode ${f.sg_mode})</div>
-          <div class="ha-attr">${f.sg_label}</div>
-        </div>
-        <div class="ha-card">
-          <div class="ha-entity-id">sensor.pl_hems_ocpp_ev_current_a</div>
-          <div class="ha-state" style="color:var(--accent)">${f.ev_amps} A (3-Phase)</div>
-          <div class="ha-attr">Wallbox Power: ${(f.ev_amps * 0.69).toFixed(1)} kW</div>
-        </div>
-      `;
-    }
+  const base = D.vpp_summary;
+  const scale = (homes * 5.0 + ci * 50.0) / (base.n_homes * 5.0 + base.n_ci_sites * 50.0);
+  const instMw = homes * 0.005 + ci * 0.050;
+  const instMwh = homes * 0.010 + ci * 0.100;
+  const p50Up = base.p50_upward_mw * scale;
+  const p90Up = base.p90_firm_upward_mw * scale;
+  const p90Dn = base.p90_firm_downward_mw * scale;
+  const gross = Math.round(base.annual_gross_vpp_rev_pln * scale);
+  const net = Math.round(gross * 0.78);
 
-    function toggleHaPlay() {
-      const btn = document.getElementById('btn-ha-play');
-      if (haTimer) {
-        clearInterval(haTimer);
-        haTimer = null;
-        btn.innerHTML = '&#9654; Play 15-min Live Loop';
-      } else {
-        btn.innerHTML = '&#9208; Pause Live Loop';
-        haTimer = setInterval(() => {
-          const slider = document.getElementById('rng-ha-step');
-          slider.value = (parseInt(slider.value, 10) + 1) % DATA.ha_24h_frames.length;
-          renderHaStep();
-        }, 450);
-      }
-    }
+  Plotly.react("vppPlot", [{
+    x: ["Installed BESS", "P50 upward", "P90 upward", "P90 downward"],
+    y: [instMw, p50Up, p90Up, p90Dn],
+    type: "bar",
+    marker: {color: [css("--muted"), css("--s4"), css("--s1"), css("--s3")]}
+  }], baseLayout({
+    shapes: [{type: "line", x0: -0.5, x1: 3.5, y0: 1.0, y1: 1.0, line: {color: css("--bad"), width: 1.2, dash: "dash"}}],
+    yaxis: {title: "MW", gridcolor: css("--grid"), linecolor: css("--axis")}
+  }), CFG);
 
-    function renderHaYaml() {
-      const brand = document.getElementById('sel-brand').value;
-      const ip = document.getElementById('inp-ip').value || '192.168.1.50';
-      const port = document.getElementById('inp-port').value || '502';
-      const wd = document.getElementById('inp-wd').value || '900';
-      const prof = DATA.inverter_profiles[brand];
+  document.getElementById("vppTable").innerHTML = `
+    <thead><tr><th class="l">Quantity</th><th>Value</th><th class="l">Note</th></tr></thead>
+    <tbody>
+      <tr><td class="l">Installed battery power / energy</td><td>${instMw.toFixed(2)} MW / ${instMwh.toFixed(2)} MWh</td><td class="l">${homes} homes + ${ci} C&amp;I sites</td></tr>
+      <tr><td class="l">P50 median upward reserve</td><td>${p50Up.toFixed(2)} MW</td><td class="l">15-minute discharge + flexible load drop</td></tr>
+      <tr class="sel"><td class="l">P90 firm reserve (upward / downward)</td><td>${p90Up.toFixed(2)} MW / ${p90Dn.toFixed(2)} MW</td><td class="l">${p90Up >= 1.0 ? "Meets 1.0 MW minimum bid size" : "Below 1.0 MW direct bid threshold"}</td></tr>
+      <tr><td class="l">Illustrative gross reserve &amp; intraday value</td><td>${fmt(gross, 0)} PLN/yr</td><td class="l">Above local bill savings</td></tr>
+      <tr><td class="l">Illustrative net share to asset owners (78 %)</td><td>${fmt(net, 0)} PLN/yr</td><td class="l">~${fmt(base.vpp_bonus_per_prosumer_home_pln_yr, 0)} PLN/home/yr</td></tr>
+    </tbody>`;
+}
 
-      let regHtml = `<table><thead><tr><th>Function</th><th>Reg Addr</th><th>Type</th><th>R/W</th></tr></thead><tbody>`;
-      Object.entries(prof.registers).forEach(([k, v]) => {
-        regHtml += `<tr><td>${v.desc}</td><td><code>${v.addr}</code></td><td>${v.type}</td><td>${v.rw}</td></tr>`;
-      });
-      regHtml += `</tbody></table>`;
-      document.getElementById('brand-reg-table').innerHTML = regHtml;
-
-      document.getElementById('yaml-box').textContent = prof.yaml_template
-        .replace(/192\.168\.1\.50/g, ip)
-        .replace(/port: 502/g, 'port: ' + port) + `\n# Hardware Watchdog Timeout configured: ${wd} seconds`;
-    }
-
-    function renderVpp() {
-      const homes = parseInt(document.getElementById('rng-vpp-homes').value, 10);
-      const ciSites = parseInt(document.getElementById('rng-vpp-ci').value, 10);
-      document.getElementById('lbl-vpp-homes').textContent = homes + ' Homes';
-      document.getElementById('lbl-vpp-ci').textContent = ciSites + ' Sites';
-
-      const base = DATA.vpp_summary;
-      const scale = (homes * 5.0 + ciSites * 50.0) / (base.n_homes * 5.0 + base.n_ci_sites * 50.0);
-      const instMw = (homes * 0.005 + ciSites * 0.050);
-      const instMwh = (homes * 0.010 + ciSites * 0.100);
-      const p90Up = base.p90_firm_upward_mw * scale;
-      const p90Down = base.p90_firm_downward_mw * scale;
-      const grossRev = Math.round(base.annual_gross_vpp_rev_pln * scale);
-      const aggFee = Math.round(grossRev * 0.22);
-      const netOwners = grossRev - aggFee;
-      const qualifies = p90Up >= 1.0 || p90Down >= 1.0;
-
-      document.getElementById('vpp-table-wrap').innerHTML = `
-        <table>
-          <thead>
-            <tr>
-              <th>VPP Portfolio Metric</th>
-              <th>Value</th>
-              <th>PSE Market / Engineering Benchmark</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Installed BESS Nameplate</td>
-              <td><strong>${instMw.toFixed(2)} MW / ${instMwh.toFixed(2)} MWh</strong></td>
-              <td>${homes} x 10 kWh Home LFP + ${ciSites} x 100 kWh C&amp;I BESS</td>
-            </tr>
-            <tr class="highlight">
-              <td>Firm P90 Deliverable Reserve (Up / Down)</td>
-              <td><strong>${p90Up.toFixed(2)} MW Up / ${p90Down.toFixed(2)} MW Down</strong></td>
-              <td style="color:${qualifies ? '#10b981' : '#f59e0b'}">${qualifies ? 'Qualifies for PSE >= 1.0 MW Balancing Bids' : 'Below 1.0 MW PSE Direct Threshold (Sub-Pool)'}</td>
-            </tr>
-            <tr>
-              <td>Gross Annual VPP Flexibility Revenue (aFRR + IDC)</td>
-              <td><strong>${grossRev.toLocaleString()} PLN / yr</strong></td>
-              <td>Incremental above local prosumer &amp; C&amp;I bill savings</td>
-            </tr>
-            <tr>
-              <td>Aggregator Platform &amp; BRP Margin (22%)</td>
-              <td>${aggFee.toLocaleString()} PLN / yr</td>
-              <td>Covers MQTT/OCPP cloud, forecasting &amp; balancing responsibility</td>
-            </tr>
-            <tr class="highlight">
-              <td>Net VPP Bonus Paid to Asset Owners (78%)</td>
-              <td><strong>${netOwners.toLocaleString()} PLN / yr</strong></td>
-              <td>~${base.vpp_bonus_per_prosumer_home_pln_yr.toLocaleString()} PLN/home/yr &amp; ~${base.vpp_bonus_per_ci_site_pln_yr.toLocaleString()} PLN/C&amp;I site/yr</td>
-            </tr>
-          </tbody>
-        </table>
-      `;
-    }
-
-    renderTopKpis();
-    renderProsumer();
-    renderCiTable();
+["tariffSel", "pvRng", "bessRng", "flexSel"].forEach(id => document.getElementById(id).oninput = renderProsumer);
+document.getElementById("haStepRng").oninput = renderHaStep;
+["vendorSel", "invIp", "wdSel"].forEach(id => document.getElementById(id).oninput = renderVendor);
+["vppHomesRng", "vppCiRng"].forEach(id => document.getElementById(id).oninput = renderVpp);
+document.getElementById("haPlayBtn").onclick = () => {
+  const btn = document.getElementById("haPlayBtn");
+  if (haTimer) { clearInterval(haTimer); haTimer = null; btn.textContent = "Play 24 h"; btn.classList.remove("on"); return; }
+  btn.textContent = "Pause"; btn.classList.add("on");
+  haTimer = setInterval(() => {
+    const r = document.getElementById("haStepRng");
+    r.value = (parseInt(r.value, 10) + 1) % 96;
     renderHaStep();
-    renderHaYaml();
-    renderVpp();
-  </script>
+  }, 180);
+};
+
+renderTiles();
+renderProsumer();
+renderWeek();
+renderCi();
+renderHil();
+renderHaStep();
+renderVendor();
+renderVpp();
+</script>
 </body>
 </html>
