@@ -193,7 +193,7 @@ def run_modbus_hil_verification(
 def _save(fig, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
-    fig.savefig(path, dpi=135, bbox_inches="tight", facecolor="#fcfcfb")
+    fig.savefig(path, dpi=135, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -207,42 +207,27 @@ def generate_plots(
     ha_24h_frames: list[dict],
     img_dir: Path,
 ) -> None:
-    """Write README charts in the portfolio's light paper style."""
+    """Write README charts in the exact default matplotlib style of pl-biogas-flex and bess-ops-warranty."""
     img_dir.mkdir(parents=True, exist_ok=True)
-    INK, INK2, MUTED, GRID, SURFACE = "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#fcfcfb"
-    BLUE, NAVY, ORANGE, WARM, GREEN, RED = "#2a78d6", "#1b3f8f", "#eb6834", "#e8a33d", "#1baf7a", "#c8423b"
-
-    plt.rcParams.update(
-        {
-            "font.family": "sans-serif",
-            "font.size": 9,
-            "axes.titlesize": 10,
-            "axes.titleweight": "normal",
-            "axes.grid": True,
-            "grid.alpha": 0.45,
-            "figure.facecolor": SURFACE,
-            "axes.facecolor": SURFACE,
-            "axes.edgecolor": "#c3c2b7",
-            "axes.labelcolor": INK2,
-            "xtick.color": INK2,
-            "ytick.color": INK2,
-            "text.color": INK,
-            "grid.color": GRID,
-        }
+    plt.rcdefaults()
+    BLUE, NAVY, ORANGE, WARM, GREEN, RED, GREY, INK = (
+        "#2a78d6",
+        "#1b3f8f",
+        "#eb6834",
+        "#e8a33d",
+        "#1baf7a",
+        "#c8423b",
+        "#898781",
+        "#52514e",
     )
 
-    def _style_ax(ax):
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.set_axisbelow(True)
-
     # 1. Prosumer annual cost by tariff and control strategy
-    fig, ax = plt.subplots(figsize=(9.2, 4.2))
+    fig, ax = plt.subplots(figsize=(9.2, 4.0))
     tariffs = ["G11", "G12w", "DYNAMIC_G12w"]
     strategies = [
-        ("uncontrolled", "Uncontrolled", MUTED),
+        ("uncontrolled", "Uncontrolled", GREY),
         ("neg_price_guard", "Negative-price guard", WARM),
-        ("ha_heuristic", "Time-window rules (YAML)", ORANGE),
+        ("ha_heuristic", "Time-window rules (YAML)", "#b5781c"),
         ("mpc_forecast", "MILP, forecast (realizable)", BLUE),
         ("milp_oracle", "MILP, perfect foresight", NAVY),
     ]
@@ -257,28 +242,18 @@ def generate_plots(
             )
             for tf in tariffs
         ]
-        bars = ax.bar(x + (i - 2) * w, vals, width=w, label=st_label, color=color, edgecolor=SURFACE, linewidth=0.8)
-        for b in bars:
-            h = b.get_height()
-            ax.text(
-                b.get_x() + b.get_width() / 2.0,
-                h + 70,
-                f"{int(round(h)):,}",
-                ha="center",
-                va="bottom",
-                fontsize=7.2,
-                color=INK2,
-            )
-    _style_ax(ax)
+        ax.bar(x + (i - 2) * w, vals, width=w, label=st_label, color=color)
     ax.set_xticks(x, ["G11 (flat)", "G12w (two-zone)", "Dynamic SDAC + G12w"])
-    ax.set_ylabel("Annual net bill + battery wear [PLN / yr]")
-    ax.set_title("Prosumer (10 kWp PV, 10 kWh battery, heat pump, EV): annual cost, Oct 2025 - Sep 2026")
-    ax.set_ylim(0, max(df_prosumer_summary["total_economic_cost_pln"]) * 1.22)
-    ax.legend(loc="upper right", frameon=False, fontsize=8, ncol=2)
+    ax.set_ylabel("Annual net bill + battery wear [PLN / year]")
+    ax.set_title("Prosumer (10 kWp PV, 10 kWh battery, heat pump, EV): annual cost", fontsize=10)
+    ax.set_ylim(0, 7600)
+    ax.grid(axis="y", alpha=0.25)
+    ax.set_axisbelow(True)
+    ax.legend(loc="upper right", fontsize=8, ncol=2)
     _save(fig, img_dir / "bill_comparison.png")
 
     # 2. Example week dispatch (1-3 May 2026)
-    fig, axes = plt.subplots(3, 1, figsize=(9.6, 6.2), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(10.0, 6.2), sharex=True)
     ts_l = df_dyn_mpc["ts_local"]
     win = (ts_l >= pd.Timestamp("2026-05-01 00:00:00", tz="Europe/Warsaw")) & (
         ts_l < pd.Timestamp("2026-05-04 00:00:00", tz="Europe/Warsaw")
@@ -289,124 +264,124 @@ def generate_plots(
     s_unc = df_dyn_unc.loc[win]
     t_axis = s_mpc["ts_local"]
 
-    axes[0].plot(
+    axes[0].step(
         t_axis,
         s_mpc["energy_buy_pln_mwh"] + s_mpc["dist_buy_pln_mwh"],
-        label="Import price (SDAC + G12w)",
-        color=INK2,
-        lw=1.3,
+        where="post",
+        label="import price (SDAC + G12w)",
+        color=INK,
+        lw=0.9,
     )
-    axes[0].plot(t_axis, s_mpc["rce_raw_pln_mwh"], label="RCE export price", color=BLUE, lw=1.3)
-    axes[0].axhline(0.0, color=MUTED, ls="--", lw=0.8)
-    axes[0].fill_between(
+    axes[0].step(
         t_axis,
         s_mpc["rce_raw_pln_mwh"],
-        0.0,
-        where=(s_mpc["rce_raw_pln_mwh"] <= 0.0),
-        color=ORANGE,
-        alpha=0.22,
-        label="RCE <= 0 (0 PLN credit)",
+        where="post",
+        label="RCE export price",
+        color=BLUE,
+        lw=0.9,
+        ls="--",
     )
-    _style_ax(axes[0])
-    axes[0].set_ylabel("PLN / MWh")
-    axes[0].set_title("Dispatch on 1-3 May 2026 (Dynamic SDAC + G12w): negative midday RCE and evening peaks")
-    axes[0].legend(loc="upper right", ncol=3, frameon=False, fontsize=7.8)
+    axes[0].axhline(0.0, color="k", lw=0.6)
+    axes[0].set_ylabel("PLN/MWh")
+    axes[0].set_title("PL, 2026-05-01 .. 2026-05-03: quarter-hour prices and prosumer dispatch", fontsize=10)
+    axes[0].grid(alpha=0.25)
+    axes[0].legend(loc="upper right", fontsize=8)
 
-    axes[1].plot(t_axis, s_mpc["pv_avail_kw"], label="Available PV", color=WARM, lw=1.2)
-    axes[1].plot(
+    axes[1].step(t_axis, s_mpc["pv_avail_kw"], where="post", label="Available PV", color=WARM, lw=0.9)
+    axes[1].step(
         t_axis,
         s_mpc["p_ch_kw"] - s_mpc["p_dis_kw"],
+        where="post",
         label="Battery (+charge / -discharge)",
         color=BLUE,
-        lw=1.4,
+        lw=0.9,
     )
-    axes[1].plot(t_axis, s_mpc["p_hp_kw"] + s_mpc["p_ev_kw"], label="Heat pump + EV", color=GREEN, lw=1.2)
-    axes[1].fill_between(t_axis, 0, s_mpc["p_curt_kw"], color=RED, alpha=0.28, label="Curtailed PV")
-    _style_ax(axes[1])
+    axes[1].step(
+        t_axis,
+        s_mpc["p_hp_kw"] + s_mpc["p_ev_kw"],
+        where="post",
+        label="Heat pump + EV",
+        color=NAVY,
+        lw=0.9,
+    )
+    axes[1].step(t_axis, s_mpc["p_curt_kw"], where="post", label="Curtailed PV", color=ORANGE, lw=0.9, ls=":")
+    axes[1].axhline(0.0, color="k", lw=0.5)
     axes[1].set_ylabel("Power [kW]")
-    axes[1].legend(loc="upper right", ncol=4, frameon=False, fontsize=7.8)
+    axes[1].set_ylim(-6, 13.5)
+    axes[1].grid(alpha=0.25)
+    axes[1].legend(loc="upper right", fontsize=8, ncol=2)
 
-    axes[2].plot(t_axis, s_unc["soc_kwh"] * 10.0, label="Uncontrolled", color=MUTED, ls="--", lw=1.2)
-    axes[2].plot(t_axis, s_mpc["soc_kwh"] * 10.0, label="MILP, forecast (realizable)", color=BLUE, lw=1.6)
-    _style_ax(axes[2])
-    axes[2].set_ylabel("SoC [%]")
-    axes[2].set_ylim(0, 105)
-    axes[2].legend(loc="upper right", ncol=2, frameon=False, fontsize=8)
+    axes[2].plot(t_axis, s_unc["soc_kwh"] * 10.0, label="Uncontrolled", color=GREY, lw=1.0)
+    axes[2].plot(t_axis, s_mpc["soc_kwh"] * 10.0, label="MILP, forecast (realizable)", color=BLUE, lw=1.1)
+    axes[2].set_ylabel("Battery SoC [%]")
+    axes[2].set_ylim(5, 102)
+    axes[2].grid(alpha=0.25)
+    axes[2].legend(loc="lower right", fontsize=8)
     _save(fig, img_dir / "dispatch_week.png")
 
     # 3. C&I B23 site cost breakdown & K-factor
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9.6, 3.9))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9.4, 3.8))
     modes = ["no_bess", "uncontrolled_bess", "mpc_ci_ems"]
     labels = ["PV only", "PV + battery\n(self-consumption)", "PV + battery\n(MILP, forecast)"]
     e_cost = [ci_results[m]["annual_energy_dist_pln"] / 1000.0 for m in modes]
     cap_cost = [ci_results[m]["annual_capacity_fee_pln"] / 1000.0 for m in modes]
     pen_cost = [ci_results[m]["annual_exceed_penalty_pln"] / 1000.0 for m in modes]
-    net_tot = [ci_results[m]["annual_total_net_cost_pln"] / 1000.0 for m in modes]
 
     x_ci = np.arange(len(modes))
-    ax1.bar(x_ci, e_cost, width=0.46, label="Energy + B23 distribution", color=BLUE)
-    ax1.bar(x_ci, cap_cost, width=0.46, bottom=e_cost, label="PSE capacity fee", color=WARM)
+    ax1.bar(x_ci, e_cost, width=0.45, label="Energy + B23 distribution", color=BLUE)
+    ax1.bar(x_ci, cap_cost, width=0.45, bottom=e_cost, label="PSE capacity fee", color=WARM)
     ax1.bar(
         x_ci,
         pen_cost,
-        width=0.46,
+        width=0.45,
         bottom=np.array(e_cost) + np.array(cap_cost),
-        label="Contracted power penalty (>40 kW)",
+        label=">40 kW penalty",
         color=RED,
     )
-    for i, tot in enumerate(net_tot):
-        ax1.text(
-            i,
-            e_cost[i] + cap_cost[i] + pen_cost[i] + 2.5,
-            f"net {tot:.1f} k",
-            ha="center",
-            fontsize=8,
-            color=INK,
-        )
-    _style_ax(ax1)
-    ax1.set_xticks(x_ci, labels)
-    ax1.set_ylabel("Thousand PLN / yr")
-    ax1.set_title("C&I site (50 kWp PV, 100 kWh battery, B23)")
-    ax1.set_ylim(0, max(np.array(e_cost) + np.array(cap_cost) + np.array(pen_cost)) * 1.28)
-    ax1.legend(loc="upper right", frameon=False, fontsize=7.5)
+    ax1.set_xticks(x_ci, labels, fontsize=8.5)
+    ax1.set_ylabel("Thousand PLN / year")
+    ax1.set_title("C&I site on B23: annual cost components", fontsize=10)
+    ax1.set_ylim(0, 185)
+    ax1.grid(axis="y", alpha=0.25)
+    ax1.set_axisbelow(True)
+    ax1.legend(loc="upper right", fontsize=8)
 
     k1_shares = [ci_results[m]["k1_days_share_pct"] for m in modes]
     k_mults = [ci_results[m]["effective_k_mult"] * 100.0 for m in modes]
-    b1 = ax2.bar(x_ci - 0.16, k1_shares, width=0.30, label="Working days in K1 (<5 % peak/off-peak)", color=GREEN)
-    b2 = ax2.bar(x_ci + 0.16, k_mults, width=0.30, label="Mean capacity-fee factor A [%]", color=ORANGE)
-    for b in b1:
-        ax2.text(b.get_x() + b.get_width() / 2, b.get_height() + 2, f"{b.get_height():.0f}%", ha="center", fontsize=7.8)
-    for b in b2:
-        ax2.text(b.get_x() + b.get_width() / 2, b.get_height() + 2, f"{b.get_height():.0f}%", ha="center", fontsize=7.8)
-    _style_ax(ax2)
-    ax2.set_xticks(x_ci, labels)
+    ax2.bar(x_ci - 0.16, k1_shares, width=0.30, label="Working days in K1 (<5 %)", color=BLUE)
+    ax2.bar(x_ci + 0.16, k_mults, width=0.30, label="Mean factor A [%]", color=WARM)
+    ax2.set_xticks(x_ci, labels, fontsize=8.5)
     ax2.set_ylabel("Share of days / factor A [%]")
-    ax2.set_ylim(0, 118)
-    ax2.set_title("PSE capacity fee K-factor (Art. 70a)")
-    ax2.legend(loc="upper right", frameon=False, fontsize=7.5)
+    ax2.set_ylim(0, 115)
+    ax2.set_title("PSE capacity fee K-factor (Art. 70a)", fontsize=10)
+    ax2.grid(axis="y", alpha=0.25)
+    ax2.set_axisbelow(True)
+    ax2.legend(loc="upper left", fontsize=8)
     _save(fig, img_dir / "ci_k_factor.png")
 
     # 4. Modbus TCP closed-loop trace
-    fig, (ax_a, ax_b) = plt.subplots(2, 1, figsize=(9.4, 4.6), sharex=True)
+    fig, (ax_a, ax_b) = plt.subplots(2, 1, figsize=(9.4, 4.5), sharex=True)
     sub_hil = df_hil.iloc[192:288]
     t_h = sub_hil["timestamp_local"]
-    ax_a.plot(t_h, sub_hil["cmd_batt_w"] / 1000.0, label="Commanded battery (reg 40002)", color=INK2, ls="--", lw=1.2)
-    ax_a.plot(t_h, sub_hil["actual_batt_w"] / 1000.0, label="Executed battery (reg 40013)", color=BLUE, lw=1.5)
-    ax_a.plot(t_h, sub_hil["curtailed_pv_w"] / 1000.0, label="Curtailed PV (reg 40015)", color=ORANGE, lw=1.3)
-    _style_ax(ax_a)
+    ax_a.step(t_h, sub_hil["cmd_batt_w"] / 1000.0, where="post", label="Commanded battery (reg 40002)", color=INK, ls="--", lw=0.9)
+    ax_a.step(t_h, sub_hil["actual_batt_w"] / 1000.0, where="post", label="Executed battery (reg 40013)", color=BLUE, lw=1.0)
+    ax_a.step(t_h, sub_hil["curtailed_pv_w"] / 1000.0, where="post", label="Curtailed PV (reg 40015)", color=ORANGE, lw=0.9)
+    ax_a.axhline(0.0, color="k", lw=0.5)
     ax_a.set_ylabel("Power [kW]")
-    ax_a.set_title("Closed-loop Modbus TCP trace on 1 May 2026 with a 45-minute communication drop")
-    ax_a.legend(loc="upper right", frameon=False, fontsize=7.8, ncol=3)
+    ax_a.set_ylim(-6, 10.5)
+    ax_a.set_title("Modbus TCP loop on 1 May 2026: 45-minute heartbeat drop at 12:00", fontsize=10)
+    ax_a.grid(alpha=0.25)
+    ax_a.legend(loc="upper left", fontsize=8)
 
-    ax_b.plot(t_h, sub_hil["soc_pct"], label="Inverter SoC (reg 40010)", color=BLUE, lw=1.5)
+    ax_b.plot(t_h, sub_hil["soc_pct"], label="Inverter SoC (reg 40010)", color=BLUE, lw=1.1)
     ax_b.fill_between(
         t_h,
         0,
         100,
         where=(sub_hil["comms_lost"] > 0),
         color=RED,
-        alpha=0.18,
-        label="No heartbeat from EMS (45 min)",
+        alpha=0.16,
+        label="No heartbeat from EMS (12:00-12:45)",
     )
     ax_b.fill_between(
         t_h,
@@ -414,30 +389,32 @@ def generate_plots(
         100,
         where=(sub_hil["watchdog_tripped"] > 0),
         color=WARM,
-        alpha=0.35,
-        label="Watchdog tripped (reg 40016 = 1 -> local self-consumption)",
+        alpha=0.32,
+        label="Watchdog tripped (reg 40016 = 1)",
     )
-    _style_ax(ax_b)
     ax_b.set_ylabel("SoC [%]")
-    ax_b.set_ylim(0, 105)
-    ax_b.legend(loc="upper right", frameon=False, fontsize=7.8, ncol=3)
+    ax_b.set_ylim(0, 108)
+    ax_b.grid(alpha=0.25)
+    ax_b.legend(loc="lower left", fontsize=8)
     _save(fig, img_dir / "modbus_hil_loop.png")
 
     # 5. Home Assistant entities & aggregated fleet reserve
-    fig, (ax_l, ax_r) = plt.subplots(1, 2, figsize=(9.6, 3.8))
+    fig, (ax_l, ax_r) = plt.subplots(1, 2, figsize=(9.4, 3.7))
     hours_24 = np.arange(len(ha_24h_frames)) * 0.25
     sg_modes = [f["sg_mode"] for f in ha_24h_frames]
     ev_amps = [f["ev_amps"] for f in ha_24h_frames]
     bess_kw_24 = [f["bess_w"] / 1000.0 for f in ha_24h_frames]
 
-    ax_l.step(hours_24, ev_amps, where="post", label="Wallbox current [A] (OCPP)", color=BLUE, lw=1.4)
-    ax_l.plot(hours_24, bess_kw_24, label="Battery setpoint [kW]", color=GREEN, lw=1.3)
-    ax_l.step(hours_24, sg_modes, where="post", label="Heat pump SG Ready state (1-4)", color=ORANGE, lw=1.3, ls="--")
-    _style_ax(ax_l)
+    ax_l.step(hours_24, ev_amps, where="post", label="Wallbox current [A] (OCPP)", color=BLUE, lw=1.0)
+    ax_l.step(hours_24, bess_kw_24, where="post", label="Battery setpoint [kW]", color=GREEN, lw=1.0)
+    ax_l.step(hours_24, sg_modes, where="post", label="Heat pump SG Ready (1-4)", color=ORANGE, lw=1.0, ls="--")
+    ax_l.axhline(0.0, color="k", lw=0.5)
     ax_l.set_xlabel("Hour on 1 May 2026")
     ax_l.set_ylabel("A / kW / state")
-    ax_l.set_title("Home Assistant entities on 1 May 2026")
-    ax_l.legend(loc="upper left", frameon=False, fontsize=7.5)
+    ax_l.set_ylim(-6, 19)
+    ax_l.set_title("Home Assistant entities on 1 May 2026", fontsize=10)
+    ax_l.grid(alpha=0.25)
+    ax_l.legend(loc="upper left", fontsize=8)
 
     cats = ["Installed\npower", "P50 upward", "P90 upward", "P90 downward"]
     mw_vals = [
@@ -446,17 +423,15 @@ def generate_plots(
         vpp_summary["p90_firm_upward_mw"],
         vpp_summary["p90_firm_downward_mw"],
     ]
-    bars_v = ax_r.bar(np.arange(len(cats)), mw_vals, width=0.48, color=[MUTED, WARM, BLUE, NAVY])
-    for b in bars_v:
-        h = b.get_height()
-        ax_r.text(b.get_x() + b.get_width() / 2, h + 0.04, f"{h:.2f}", ha="center", fontsize=8, color=INK2)
+    ax_r.bar(np.arange(len(cats)), mw_vals, width=0.45, color=[GREY, WARM, BLUE, NAVY])
     ax_r.axhline(1.0, color=RED, ls="--", lw=1.0, label="1.0 MW bid threshold")
-    _style_ax(ax_r)
-    ax_r.set_xticks(np.arange(len(cats)), cats)
+    ax_r.set_xticks(np.arange(len(cats)), cats, fontsize=8.5)
     ax_r.set_ylabel("MW")
-    ax_r.set_ylim(0, max(mw_vals) * 1.24)
-    ax_r.set_title("Aggregated reserve (250 homes + 15 C&I sites)")
-    ax_r.legend(loc="upper right", frameon=False, fontsize=7.5)
+    ax_r.set_ylim(0, 2.35)
+    ax_r.set_title("Aggregated reserve (250 homes + 15 C&I sites)", fontsize=10)
+    ax_r.grid(axis="y", alpha=0.25)
+    ax_r.set_axisbelow(True)
+    ax_r.legend(loc="upper right", fontsize=8)
     _save(fig, img_dir / "ha_vpp_overview.png")
 
 
