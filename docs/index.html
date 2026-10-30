@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Home and C&amp;I energy management on Polish 15-minute prices</title>
-<meta name="description" content="15-minute MILP dispatch of rooftop PV, battery, heat pump and EV under Polish FIFO net-billing (RCE) and C&amp;I B23 with the PSE capacity fee, tested over a localhost Modbus TCP loop and packaged for Home Assistant.">
+<meta name="description" content="Daily 15-minute MILP dispatch of rooftop PV, battery, heat pump and EV under Polish FIFO net-billing (RCE) and of a C&amp;I site on B23 with the capacity fee K-groups, replayed over a localhost Modbus TCP emulator and exported for Home Assistant.">
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous"></script>
 <script src="data.js"></script>
 <style>
@@ -76,22 +76,24 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 <p>A Polish prosumer with rooftop PV, a battery, a heat pump and an EV charger sees two price signals at once: exports
 are credited to a 12-month FIFO deposit at the 15-minute market price RCE (floored at zero when RCE is negative), while
 imports pay a flat, two-zone or dynamic tariff plus cash distribution fees. A commercial site on B23 faces a second
-non-linearity: the PSE capacity fee (141.20 PLN/MWh in peak hours) drops by 83 % on days when peak import stays within
-5 % of off-peak import (band K1). This project tests how much a 15-minute mixed-integer controller saves over the first
-full year of 15-minute prices (October 2025 to September 2026), checks the schedule on a localhost Modbus TCP inverter
-emulator with a 15-minute watchdog, and packages the entities and register maps for Home Assistant. Code and method:
+rule: on each working day the capacity fee (141.20 PLN/MWh until December 2025, 219.40 PLN/MWh in 2026, charged on
+energy drawn 07:00-21:59) is multiplied by 0.17 when mean import in those hours stays within 5 % of mean import in the
+other hours (group K1). This project compares simple rules with a mixed-integer program solved once per day over the
+first full year of 15-minute prices (October 2025 to September 2026), runs the schedule against a localhost Modbus TCP
+inverter emulator with a watchdog, and exports the resulting entity states for Home Assistant. Code and method:
 <a href="https://github.com/kwwaleszczynski-del/pl-hems-mpc">github.com/kwwaleszczynski-del/pl-hems-mpc</a>.</p>
-<p class="warn">Tariff rates, distribution fees and inverter register addresses in this repository are illustrative
-configurations compiled from public tariff sheets and manuals, not billing advice or certified wiring instructions.
-Always check register tables and firmware notes against the manufacturer's manual before writing to a live inverter.</p>
+<p class="warn">Household and C&amp;I loads are synthetic. Energy and distribution rates are illustrative round numbers,
+and the net-billing and capacity-fee rules are simplified readings of the statutes (sources in the README) that must be
+verified before any real use. The Modbus register map belongs to the emulator only and must not be written to a real
+inverter.</p>
 
 <div class="tiles" id="tiles"></div>
 
 <h2>1. Prosumer under 12-month FIFO net-billing</h2>
-<p>Annual settlement of a household with a 10 kWp PV array, a 10 kWh / 5 kW LFP battery, a floor-slab heat pump (2R2C
-thermal model) and an 11 kW EV charger over 35,040 quarter-hours (1 October 2025 to 30 September 2026). The deposit
-offsets active energy only; distribution fees are paid in cash, and at most 20 % of any unused deposit from a given
-month can be refunded after 12 months.</p>
+<p>Annual settlement of a household with a 10 kWp PV array, a 10 kWh / 5 kW LFP battery, a heat pump with a one-state
+floor-slab heat store and an 11 kW EV charger over 35,040 quarter-hours (1 October 2025 to 30 September 2026). The
+deposit offsets active energy only; distribution fees are paid in cash, and at most 30 % of a month's credit still
+unused after 12 months is refunded.</p>
 
 <div class="controls">
   <label>Tariff
@@ -101,130 +103,75 @@ month can be refunded after 12 months.</p>
       <option value="G11">G11 flat</option>
     </select>
   </label>
-  <label>PV capacity <output id="pvOut">10 kWp</output>
-    <input type="range" id="pvRng" min="5" max="20" step="1" value="10">
-  </label>
-  <label>Battery <output id="bessOut">10.0 kWh</output>
-    <input type="range" id="bessRng" min="5" max="25" step="2.5" value="10">
-  </label>
-  <label>Flexible loads
-    <select id="flexSel">
-      <option value="1.0" selected>Heat pump + EV charger</option>
-      <option value="0.65">Heat pump only</option>
-      <option value="0.35">Battery only</option>
-    </select>
-  </label>
 </div>
 
 <div class="two">
   <div class="card"><div id="prosPlot" class="plot"></div></div>
   <div class="card scroll"><table id="prosTable"></table>
-    <p class="note" style="margin-top:8px">Realizable MILP plans on a noisy 24-hour forecast (12 % PV, 14 % load error)
-    and settles on actual prices and weather. Perfect foresight solves on actuals as an upper bound.</p>
+    <p class="note" style="margin-top:8px">The noisy-forecast MILP plans each day at 00:00 on actual PV and base load
+    multiplied by independent N(1, 0.12) and N(1, 0.14) noise per quarter-hour and on 0.92 x SDAC as the RCE forecast;
+    heat demand, COP and the EV schedule are taken as known. This is a synthetic forecast, not a forecasting model, so
+    its gap to perfect foresight is optimistic.</p>
   </div>
 </div>
 
-<h2>2. Dispatch in the negative-price week (1-3 May 2026)</h2>
-<p>On 1 May 2026 RCE fell to -1,458 PLN/MWh around solar noon. An uncontrolled battery fills up by 09:30 and exports the
-rest of the day at zero credit. The MILP controller holds battery headroom for the negative-price hours, pre-heats the
-floor slab and charges the EV around midday, curtailing only what exceeds the local load and battery limit.</p>
+<h2>2. Dispatch in the negative-price days (1-3 May 2026)</h2>
+<p id="weekText"></p>
 <div class="card"><div id="weekPlot" class="plot tall"></div></div>
 
-<h2>3. Commercial site on B23 and the PSE capacity fee (Art. 70a)</h2>
-<p>A 50 kWp PV + 100 kWh / 50 kW battery site on B23 with a 40 kW connection limit. Under Art. 70a of the Capacity Market
-Act, the capacity fee (141.20 PLN/MWh across 07:00-21:59 on working days) is multiplied by A = 0.17 when the ratio of
-mean peak import to mean off-peak import stays within 5 % (band K1). Standard self-consumption discharges early in the
-afternoon and leaves the evening peak unbuffered; the MILP controller flattens the peak/off-peak ratio and places 87 %
-of working days in K1.</p>
+<h2>3. Commercial site on B23 and the capacity fee (Art. 70a)</h2>
+<p>A 50 kWp PV + 100 kWh / 50 kW battery site on B23 with a 40 kW contracted power and a synthetic day-shift load. The
+ratio rule is causal: it charges from the grid between 00:00 and 06:59, keeps import in the fee hours at or below 1.04
+times the mean import of 00:00-06:59 and lifts import after 22:00 to that same mean. The MILP solves each day with
+perfect foresight and chooses the K-group as part of the optimum, so it is an upper bound.</p>
 <div class="two">
   <div class="card"><div id="ciPlot" class="plot"></div></div>
   <div class="card scroll"><table id="ciTable"></table></div>
 </div>
 
-<h2>4. Closed-loop Modbus TCP test and hardware watchdog</h2>
-<p>The schedule is tested over a localhost TCP socket (function codes <code>0x03</code>, <code>0x06</code>,
-<code>0x10</code>, unit ID 1) against a virtual inverter. On 1 May 2026 between 12:00 and 12:45 the EMS stops sending
-heartbeat increments on register <code>40004</code>; after 900 s (register <code>40005</code>) the inverter sets
-<code>40016 = 1</code> and falls back from forced dispatch (mode 2) to local self-consumption (mode 0) until writes
-resume.</p>
+<h2>4. Closed-loop Modbus TCP test and watchdog</h2>
+<p>The schedule is replayed over a localhost TCP socket (function codes <code>0x03</code>, <code>0x06</code>,
+<code>0x10</code>, unit ID 1) against an emulated inverter. On 1 May 2026 the EMS sends no writes at 12:00, 12:15 and
+12:30. The emulator checks the heartbeat on register <code>40004</code> once per quarter-hour; when more than 900 s
+(register <code>40005</code>) have passed without a change it sets <code>40016 = 1</code> and falls back from forced
+dispatch (mode 2) to self-consumption (mode 0) until writes resume. The fallback also lifts the export limit, so in the
+two tripped steps the emulator exports PV at an RCE below -1,000 PLN/MWh.</p>
 <div class="card"><div id="hilPlot" class="plot"></div></div>
 
-<h2>5. Home Assistant entities and inverter register maps</h2>
-<p>The repository includes a Home Assistant custom component (<code>custom_components/pl_hems_mpc/</code>) and register
-definitions for four common hybrid inverters. Use the slider to step through the 96 quarter-hours of 1 May 2026 and see
-the state of each entity alongside the generated Home Assistant YAML.</p>
+<h2>5. Home Assistant export</h2>
+<p>The repository exports MQTT discovery payloads and a per-quarter-hour state message derived from the noisy-forecast
+MILP dispatch, plus a <code>configuration.yaml</code> snippet for the emulator's register map. It is an export of entity
+definitions, not an installable integration, and it has not been tested against a running Home Assistant. Use the
+slider to step through the 96 quarter-hours of 1 May 2026.</p>
 
 <div class="controls">
   <label>Quarter-hour on 1 May 2026 <output id="haTimeOut">12:00</output>
     <input type="range" id="haStepRng" min="0" max="95" step="1" value="48" style="width:240px">
   </label>
   <button class="btn" id="haPlayBtn" type="button">Play 24 h</button>
-  <label>Inverter register map
-    <select id="vendorSel">
-      <option value="deye_sg04lp3" selected>Deye SUN-10K-SG04LP3-EU</option>
-      <option value="huawei_sun2000">Huawei SUN2000 + LUNA2000</option>
-      <option value="sungrow_sh10rt">Sungrow SH10RT + SBR096</option>
-      <option value="victron_ess">Victron MultiPlus-II + Cerbo GX</option>
-    </select>
-  </label>
-  <label>Inverter IP
-    <input type="text" id="invIp" value="192.168.1.50" style="width:130px">
-  </label>
-  <label>Watchdog timeout
-    <select id="wdSel">
-      <option value="900" selected>900 s (15 min)</option>
-      <option value="300">300 s (5 min)</option>
-      <option value="1800">1800 s (30 min)</option>
-    </select>
-  </label>
 </div>
 
 <div class="two">
   <div class="card scroll">
-    <h3>Home Assistant entities at <span id="haTimeHdr">12:00</span></h3>
+    <h3>Entity states at <span id="haTimeHdr">12:00</span></h3>
     <table id="haEntityTable"></table>
   </div>
   <div class="card"><div id="haPlot" class="plot"></div></div>
 </div>
 
-<div class="two" style="margin-top:14px">
-  <div class="card scroll">
-    <h3 id="vendorTitle">Modbus holding registers</h3>
-    <p class="note" id="vendorNote"></p>
-    <table id="regTable"></table>
-  </div>
-  <div class="card">
-    <h3>Generated <code>configuration.yaml</code> + <code>automations.yaml</code></h3>
-    <pre id="yamlBox"></pre>
-  </div>
-</div>
-
-<h2>6. Aggregated reserve of a household and C&amp;I fleet</h2>
-<p>When individual sites run the same 15-minute state estimator, their residual battery headroom above local commitments
-can be pooled. The chart and table below show the empirical P50 and P90 upward (discharge / load drop) and downward
-(charge / export curtailment) reserve of a mixed fleet against a 1.0 MW minimum bid size.</p>
-
-<div class="controls">
-  <label>Households (10 kWh / 5 kW) <output id="vppHomesOut">250</output>
-    <input type="range" id="vppHomesRng" min="50" max="1000" step="50" value="250">
-  </label>
-  <label>C&amp;I sites (100 kWh / 50 kW) <output id="vppCiOut">15</output>
-    <input type="range" id="vppCiRng" min="0" max="50" step="5" value="15">
-  </label>
-</div>
-
-<div class="two">
-  <div class="card"><div id="vppPlot" class="plot"></div></div>
-  <div class="card scroll"><table id="vppTable"></table></div>
+<div class="card" style="margin-top:14px">
+  <h3>Generated <code>configuration.yaml</code> snippet (emulator register map)</h3>
+  <pre id="yamlBox"></pre>
 </div>
 
 <p class="note" style="margin-top:28px">Data: PSE S.A. reports API (15-minute RCE and SDAC prices, October 2025 -
-September 2026), ERA5 reanalysis (Copernicus, via Open-Meteo). Independent analytical project, not affiliated with PSE
-S.A. or any inverter manufacturer.</p>
+September 2026), ERA5 reanalysis (Copernicus, via Open-Meteo) for one grid point in central Poland. Household and C&amp;I
+loads are synthetic. Independent analytical project, not affiliated with PSE S.A. or any inverter manufacturer.</p>
 </main>
 
 <script>
 const D = window.DATA;
+const H = D.headline;
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const fmt = (x, d = 0) => x == null || isNaN(x) ? "-" : Number(x).toLocaleString("en-US", {minimumFractionDigits: d, maximumFractionDigits: d});
 const CFG = {responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"]};
@@ -239,27 +186,17 @@ function baseLayout(extra) {
   }, extra || {});
 }
 
-const STRAT_NAMES = {
-  uncontrolled: "Uncontrolled",
-  neg_price_guard: "Negative-price guard",
-  ha_heuristic: "YAML time rules",
-  mpc_forecast: "MILP, forecast (realizable)",
-  milp_oracle: "MILP, perfect foresight"
-};
+const STRAT_NAMES = D.strategy_labels;
+const CI_NAMES = D.ci_labels;
 
 function renderTiles() {
-  const dyn = D.prosumer_summary.filter(r => r.tariff === "DYNAMIC_G12w");
-  const unc = dyn.find(r => r.strategy === "uncontrolled");
-  const mpc = dyn.find(r => r.strategy === "mpc_forecast");
-  const saved = unc.total_economic_cost_pln - mpc.total_economic_cost_pln;
-  const pct = (100 * saved / unc.total_economic_cost_pln).toFixed(1);
-  const ci = D.ci_summary;
-  const ciSaved = ci.no_bess.annual_capacity_fee_pln - ci.mpc_ci_ems.annual_capacity_fee_pln;
+  const dyn = H.prosumer.DYNAMIC_G12w;
+  const ci = H.ci.ratio_rule;
   const items = [
-    [fmt(D.negative_or_zero_rce_hours, 1) + " h", "Hours with RCE <= 0 PLN/MWh", "Oct 2025 - Sep 2026 (1,430 quarter-hours)"],
-    ["-" + fmt(saved, 0) + " PLN/yr", "Prosumer saving (MILP vs uncontrolled)", "-" + pct + " % on Dynamic SDAC + G12w"],
-    [fmt(ci.mpc_ci_ems.k1_days_share_pct, 1) + " %", "C&I working days in K1 band", "Capacity fee cut by " + fmt(ciSaved, 0) + " PLN/yr (-71 %)"],
-    ["900 s", "Modbus TCP watchdog timeout", fmt(D.modbus_hil.steps_verified, 0) + " quarter-hour steps verified"]
+    [fmt(H.rce_le0_hours, 1) + " h", "Hours with RCE <= 0 PLN/MWh", "Oct 2025 - Sep 2026 (" + fmt(H.rce_le0_quarters, 0) + " quarter-hours)"],
+    ["-" + fmt(dyn.forecast_saving_pln, 0) + " PLN/yr", "Prosumer saving, noisy-forecast MILP", "-" + fmt(dyn.forecast_saving_pct, 1) + " % vs uncontrolled on Dynamic SDAC + G12w"],
+    [fmt(D.ci_summary.ratio_rule.k1_days_share_pct, 1) + " %", "C&I working days in K1, ratio rule", "Capacity fee cut by " + fmt(ci.capacity_fee_cut_pln, 0) + " PLN/yr (-" + fmt(ci.capacity_fee_cut_pct, 1) + " %)"],
+    [fmt(D.modbus_hil.steps_verified, 0), "Quarter-hour Modbus TCP transactions", "watchdog tripped in " + fmt(D.modbus_hil.watchdog_tripped_steps, 0) + " steps"]
   ];
   document.getElementById("tiles").innerHTML = items.map(t =>
     `<div class="card tile"><div class="v">${t[0]}</div><div class="l">${t[1]}</div><div class="s">${t[2]}</div></div>`
@@ -268,69 +205,35 @@ function renderTiles() {
 
 function renderProsumer() {
   const tf = document.getElementById("tariffSel").value;
-  const pv = parseFloat(document.getElementById("pvRng").value);
-  const bess = parseFloat(document.getElementById("bessRng").value);
-  const flex = parseFloat(document.getElementById("flexSel").value);
-  document.getElementById("pvOut").textContent = pv.toFixed(0) + " kWp";
-  document.getElementById("bessOut").textContent = bess.toFixed(1) + " kWh";
-
   const rows = D.prosumer_summary.filter(r => r.tariff === tf);
-  const baseUnc = rows.find(r => r.strategy === "uncontrolled").total_economic_cost_pln;
-  const pvGain = (pv - 10.0) * 185.0;
-  const bessScale = Math.pow(bess / 10.0, 0.58);
-
-  const scaled = rows.map(r => {
-    const rawSav = baseUnc - r.total_economic_cost_pln;
-    const adjSav = r.strategy === "uncontrolled" ? 0 : rawSav * bessScale * (0.45 + 0.55 * flex);
-    const adjCost = Math.max(400, (baseUnc - pvGain) - adjSav);
-    const adjDeg = r.bess_deg_cost_pln * (bess / 10.0);
-    return Object.assign({}, r, {
-      adjBill: Math.max(200, adjCost - adjDeg),
-      adjDeg: adjDeg,
-      adjCost: adjCost,
-      adjSav: adjSav
-    });
-  });
+  const unc = rows.find(r => r.strategy === "uncontrolled").total_economic_cost_pln;
 
   Plotly.react("prosPlot", [
-    {
-      x: scaled.map(r => STRAT_NAMES[r.strategy]),
-      y: scaled.map(r => Math.round(r.adjBill)),
-      name: "Net cash bill",
-      type: "bar",
-      marker: {color: css("--s1")}
-    },
-    {
-      x: scaled.map(r => STRAT_NAMES[r.strategy]),
-      y: scaled.map(r => Math.round(r.adjDeg)),
-      name: "Battery cycle wear",
-      type: "bar",
-      marker: {color: css("--s4")}
-    }
+    {x: rows.map(r => STRAT_NAMES[r.strategy]), y: rows.map(r => r.net_cash_bill_pln), name: "Net cash bill", type: "bar", marker: {color: css("--s1")}},
+    {x: rows.map(r => STRAT_NAMES[r.strategy]), y: rows.map(r => r.bess_deg_cost_pln), name: "Battery cycle wear", type: "bar", marker: {color: css("--s4")}}
   ], baseLayout({
     barmode: "stack",
     yaxis: {title: "PLN / year", gridcolor: css("--grid"), linecolor: css("--axis")},
     xaxis: {gridcolor: css("--grid"), linecolor: css("--axis"), tickangle: -12}
   }), CFG);
 
-  const unc0 = scaled[0].adjCost;
   document.getElementById("prosTable").innerHTML = `
     <thead><tr>
       <th class="l">Strategy</th><th>Import [MWh]</th><th>Export [MWh]</th><th>Curtailed [MWh]</th>
       <th>Export at RCE&le;0</th><th>Cash bill [PLN]</th><th>Wear [PLN]</th><th>Total [PLN/yr]</th><th>vs uncontrolled</th>
     </tr></thead>
-    <tbody>${scaled.map(r => {
-      const diff = r.adjCost - unc0;
-      const pct = unc0 > 0 ? (100 * diff / unc0).toFixed(1) + " %" : "-";
+    <tbody>${rows.map(r => {
+      const diff = r.total_economic_cost_pln - unc;
+      const pct = (100 * diff / unc).toFixed(1) + " %";
       return `<tr class="${r.strategy === "mpc_forecast" ? "sel" : ""}">
         <td class="l">${STRAT_NAMES[r.strategy]}</td>
         <td>${r.import_mwh.toFixed(2)}</td>
         <td>${r.export_mwh.toFixed(2)}</td>
         <td>${r.curtailed_mwh.toFixed(2)}</td>
         <td>${r.neg_rce_export_mwh.toFixed(2)}</td>
-        <td>${fmt(r.adjBill, 0)}</td>
-        <td>${fmt(r.adjDeg, 0)}</td>
-        <td>${fmt(r.adjCost, 0)}</td>
+        <td>${fmt(r.net_cash_bill_pln, 0)}</td>
+        <td>${fmt(r.bess_deg_cost_pln, 0)}</td>
+        <td>${fmt(r.total_economic_cost_pln, 0)}</td>
         <td>${r.strategy === "uncontrolled" ? "-" : fmt(diff, 0) + " (" + pct + ")"}</td>
       </tr>`;
     }).join("")}</tbody>`;
@@ -338,7 +241,12 @@ function renderProsumer() {
 
 function renderWeek() {
   const W = D.week_trace;
-  if (!W) return;
+  const minRce = Math.min(...W.rce_price);
+  const tMin = W.ts[W.rce_price.indexOf(minRce)];
+  document.getElementById("weekText").textContent =
+    "Lowest RCE in these three days: " + fmt(minRce, 1) + " PLN/MWh at " + tMin + " (lowest of the year: " +
+    fmt(H.rce_min_pln_mwh, 1) + " PLN/MWh at " + H.rce_min_local + "). The chart shows import and RCE prices, the " +
+    "noisy-forecast MILP dispatch and the battery state of charge of the MILP and of the uncontrolled house.";
   const t = W.ts;
   Plotly.react("weekPlot", [
     {x: t, y: W.buy_price, name: "Import price (SDAC+G12w)", yaxis: "y1", line: {color: css("--ink2"), width: 1.4}},
@@ -348,7 +256,7 @@ function renderWeek() {
     {x: t, y: W.flex_kw, name: "Heat pump + EV [kW]", yaxis: "y2", line: {color: css("--s3"), width: 1.3}},
     {x: t, y: W.curt_kw, name: "Curtailed PV [kW]", yaxis: "y2", fill: "tozeroy", line: {color: css("--bad"), width: 1}},
     {x: t, y: W.soc_unc, name: "SoC uncontrolled [%]", yaxis: "y3", line: {color: css("--muted"), width: 1.3, dash: "dot"}},
-    {x: t, y: W.soc_mpc, name: "SoC MILP forecast [%]", yaxis: "y3", line: {color: css("--s1"), width: 1.8}}
+    {x: t, y: W.soc_mpc, name: "SoC MILP, noisy forecast [%]", yaxis: "y3", line: {color: css("--s1"), width: 1.8}}
   ], baseLayout({
     grid: {rows: 3, columns: 1, pattern: "independent", roworder: "top to bottom"},
     xaxis: {gridcolor: css("--grid"), linecolor: css("--axis"), matches: "x"},
@@ -362,35 +270,31 @@ function renderWeek() {
 
 function renderCi() {
   const C = D.ci_summary;
-  const modes = [
-    ["no_bess", "PV only (no battery)"],
-    ["uncontrolled_bess", "PV + 100 kWh battery (self-consumption)"],
-    ["mpc_ci_ems", "PV + 100 kWh battery (MILP, forecast)"]
-  ];
-  const x = modes.map(m => m[1]);
+  const modes = Object.keys(CI_NAMES);
+  const x = modes.map(m => CI_NAMES[m]);
   Plotly.react("ciPlot", [
-    {x, y: modes.map(m => C[m[0]].annual_energy_dist_pln / 1000), name: "Energy + B23 dist.", type: "bar", marker: {color: css("--s1")}},
-    {x, y: modes.map(m => C[m[0]].annual_capacity_fee_pln / 1000), name: "PSE capacity fee", type: "bar", marker: {color: css("--s4")}},
-    {x, y: modes.map(m => C[m[0]].annual_exceed_penalty_pln / 1000), name: ">40 kW penalty", type: "bar", marker: {color: css("--bad")}}
+    {x, y: modes.map(m => C[m].annual_energy_dist_pln / 1000), name: "Energy + B23 dist.", type: "bar", marker: {color: css("--s1")}},
+    {x, y: modes.map(m => C[m].annual_capacity_fee_pln / 1000), name: "Capacity fee", type: "bar", marker: {color: css("--s4")}}
   ], baseLayout({
     barmode: "stack",
-    yaxis: {title: "Thousand PLN / year", gridcolor: css("--grid"), linecolor: css("--axis")}
+    yaxis: {title: "Thousand PLN / year", gridcolor: css("--grid"), linecolor: css("--axis")},
+    xaxis: {gridcolor: css("--grid"), linecolor: css("--axis"), tickangle: -12}
   }), CFG);
 
   document.getElementById("ciTable").innerHTML = `
     <thead><tr>
       <th class="l">Operating mode</th><th>Energy + B23 [PLN]</th><th>Capacity fee [PLN]</th>
-      <th>Mean factor A</th><th>Days in K1</th><th>&gt;40 kW penalty</th><th>Battery wear</th><th>Net total [PLN/yr]</th>
+      <th>Mean factor A</th><th>Days in K1</th><th>Quarter-hours &gt;40 kW</th><th>Battery wear</th><th>Net total [PLN/yr]</th>
     </tr></thead>
-    <tbody>${modes.map(([k, label]) => {
+    <tbody>${modes.map(k => {
       const r = C[k];
-      return `<tr class="${k === "mpc_ci_ems" ? "sel" : ""}">
-        <td class="l">${label}</td>
+      return `<tr class="${k === "ratio_rule" ? "sel" : ""}">
+        <td class="l">${CI_NAMES[k]}</td>
         <td>${fmt(r.annual_energy_dist_pln, 0)}</td>
         <td>${fmt(r.annual_capacity_fee_pln, 0)}</td>
         <td>${r.effective_k_mult.toFixed(2)}</td>
         <td>${r.k1_days_share_pct.toFixed(1)} %</td>
-        <td>${fmt(r.annual_exceed_penalty_pln, 0)}</td>
+        <td>${fmt(r.quarters_above_limit_per_yr, 0)}</td>
         <td>${fmt(r.annual_deg_cost_pln, 0)}</td>
         <td>${fmt(r.annual_total_net_cost_pln, 0)}</td>
       </tr>`;
@@ -398,14 +302,13 @@ function renderCi() {
 }
 
 function renderHil() {
-  const H = D.hil_day3;
-  if (!H) return;
+  const T = D.hil_day3;
   Plotly.react("hilPlot", [
-    {x: H.ts, y: H.cmd_kw, name: "Commanded battery (reg 40002) [kW]", yaxis: "y1", line: {color: css("--ink2"), dash: "dot", width: 1.4}},
-    {x: H.ts, y: H.act_kw, name: "Executed battery (reg 40013) [kW]", yaxis: "y1", line: {color: css("--s1"), width: 1.7}},
-    {x: H.ts, y: H.curt_kw, name: "Curtailed PV (reg 40015) [kW]", yaxis: "y1", line: {color: css("--s2"), width: 1.4}},
-    {x: H.ts, y: H.soc, name: "Inverter SoC (reg 40010) [%]", yaxis: "y2", line: {color: css("--s3"), width: 1.6}},
-    {x: H.ts, y: H.wd.map(v => v ? 100 : 0), name: "Watchdog tripped (reg 40016 = 1)", yaxis: "y2", fill: "tozeroy",
+    {x: T.ts, y: T.cmd_kw, name: "Commanded battery (reg 40002) [kW]", yaxis: "y1", line: {color: css("--ink2"), dash: "dot", width: 1.4}},
+    {x: T.ts, y: T.act_kw, name: "Executed battery (reg 40013) [kW]", yaxis: "y1", line: {color: css("--s1"), width: 1.7}},
+    {x: T.ts, y: T.curt_kw, name: "Curtailed PV (reg 40015) [kW]", yaxis: "y1", line: {color: css("--s2"), width: 1.4}},
+    {x: T.ts, y: T.soc, name: "Inverter SoC (reg 40010) [%]", yaxis: "y2", line: {color: css("--s3"), width: 1.6}},
+    {x: T.ts, y: T.wd.map(v => v ? 100 : 0), name: "Watchdog tripped (reg 40016 = 1)", yaxis: "y2", fill: "tozeroy",
      line: {color: css("--bad"), width: 1}}
   ], baseLayout({
     grid: {rows: 2, columns: 1, pattern: "independent", roworder: "top to bottom"},
@@ -422,88 +325,30 @@ function renderHaStep() {
   document.getElementById("haTimeHdr").textContent = f.time_str + " (1 May 2026)";
 
   const ents = [
-    ["sensor.pl_hems_pse_rce_15min", f.rce.toFixed(1) + " PLN/MWh", "deposit credit: " + Math.max(0, f.rce).toFixed(1) + " PLN/MWh"],
-    ["sensor.pl_hems_grid_import_price", f.buy.toFixed(1) + " PLN/MWh", "SDAC + G12w distribution"],
-    ["binary_sensor.pl_hems_zero_export_guard", f.zero_export ? "on (curtailing)" : "off (normal)", "curtailed PV: " + f.curt_w + " W"],
-    ["sensor.pl_hems_mpc_bess_setpoint_w", (f.bess_w >= 0 ? "+" : "") + f.bess_w + " W", "SoC: " + f.soc_pct.toFixed(1) + " %"],
-    ["sensor.pl_hems_sg_ready_heat_pump", "Mode " + f.sg_mode + " (" + f.sg_code + ")", f.sg_label],
-    ["sensor.pl_hems_ocpp_ev_current_a", f.ev_amps + " A", (f.ev_amps * 0.6928).toFixed(1) + " kW (3-phase)"],
-    ["sensor.pl_hems_ci_k_factor_live", "Band K1 (A = 0.17)", "delta_S = 3.8 % (< 5.0 % threshold)"],
-    ["sensor.pl_hems_fifo_deposit_balance", "1,420 PLN", "12-month expiring share: 0 PLN"]
+    ["PSE 15-min RCE Price", f.rce.toFixed(1) + " PLN/MWh", "deposit credit: " + Math.max(0, f.rce).toFixed(1) + " PLN/MWh"],
+    ["Negative RCE Zero-Export Guard", f.zero_export ? "on" : "off", "curtailed PV: " + f.curt_w + " W"],
+    ["MPC Battery Power Setpoint", (f.bess_w >= 0 ? "+" : "") + f.bess_w + " W", "SoC: " + f.soc_pct.toFixed(1) + " %"],
+    ["MPC Dynamic Export Limit", f.state_message.export_limit_w + " W", "0 W while RCE <= 0"],
+    ["Heat Pump SG Ready State", f.sg_code + " (state " + f.sg_mode + ")", f.sg_label + "; heat pump " + f.hp_kw.toFixed(2) + " kW vs need " + f.hp_need_kw.toFixed(2) + " kW"],
+    ["EV Charging Current Limit", f.ev_amps + " A", "import price " + f.buy.toFixed(1) + " PLN/MWh"]
   ];
   document.getElementById("haEntityTable").innerHTML = `
-    <thead><tr><th class="l">Entity ID</th><th>State</th><th class="l">Attributes</th></tr></thead>
-    <tbody>${ents.map(e => `<tr><td class="l"><code>${e[0]}</code></td><td>${e[1]}</td><td class="l">${e[2]}</td></tr>`).join("")}</tbody>`;
+    <thead><tr><th class="l">Entity (MQTT discovery name)</th><th>State</th><th class="l">Context</th></tr></thead>
+    <tbody>${ents.map(e => `<tr><td class="l">${e[0]}</td><td>${e[1]}</td><td class="l">${e[2]}</td></tr>`).join("")}</tbody>`;
 
   const hrs = D.ha_24h_frames.map(x => x.time_str);
   Plotly.react("haPlot", [
-    {x: hrs, y: D.ha_24h_frames.map(x => x.ev_amps), name: "OCPP current [A]", line: {shape: "hv", color: css("--s1"), width: 1.6}},
+    {x: hrs, y: D.ha_24h_frames.map(x => x.ev_amps), name: "EV current limit [A]", line: {shape: "hv", color: css("--s1"), width: 1.6}},
     {x: hrs, y: D.ha_24h_frames.map(x => x.bess_w / 1000), name: "Battery setpoint [kW]", line: {color: css("--s3"), width: 1.5}},
-    {x: hrs, y: D.ha_24h_frames.map(x => x.sg_mode), name: "SG Ready mode (1-4)", line: {shape: "hv", color: css("--s2"), dash: "dot", width: 1.5}}
+    {x: hrs, y: D.ha_24h_frames.map(x => x.sg_mode), name: "SG Ready state (1-4)", line: {shape: "hv", color: css("--s2"), dash: "dot", width: 1.5}}
   ], baseLayout({
     shapes: [{type: "line", x0: f.time_str, x1: f.time_str, y0: -5, y1: 18, line: {color: css("--ink"), width: 1, dash: "dash"}}],
-    yaxis: {title: "A / kW / mode", gridcolor: css("--grid"), linecolor: css("--axis")}
+    yaxis: {title: "A / kW / state", gridcolor: css("--grid"), linecolor: css("--axis")}
   }), CFG);
 }
 
-function renderVendor() {
-  const vk = document.getElementById("vendorSel").value;
-  const ip = document.getElementById("invIp").value.trim() || "192.168.1.50";
-  const wd = document.getElementById("wdSel").value;
-  const p = D.inverter_profiles[vk];
-  document.getElementById("vendorTitle").textContent = p.display_name + " (TCP port " + p.default_port + ", unit " + p.unit_id + ")";
-  document.getElementById("vendorNote").textContent = p.protocol_note;
-  document.getElementById("regTable").innerHTML = `
-    <thead><tr><th>Address</th><th>Type</th><th>Scale</th><th>Unit</th><th class="l">Function</th></tr></thead>
-    <tbody>${p.registers.map(r => `<tr>
-      <td><code>${r.address}</code></td><td>${r.dtype}</td><td>${r.scale}</td><td>${r.unit || "-"}</td>
-      <td class="l">${r.name} — <span class="note">${r.desc}</span></td>
-    </tr>`).join("")}</tbody>`;
-  document.getElementById("yamlBox").textContent = p.yaml_template.replace(/192\.168\.1\.50/g, ip)
-    + "\n# Watchdog timeout: " + wd + " s";
-}
-
-function renderVpp() {
-  const homes = parseInt(document.getElementById("vppHomesRng").value, 10);
-  const ci = parseInt(document.getElementById("vppCiRng").value, 10);
-  document.getElementById("vppHomesOut").textContent = homes;
-  document.getElementById("vppCiOut").textContent = ci;
-
-  const base = D.vpp_summary;
-  const scale = (homes * 5.0 + ci * 50.0) / (base.n_homes * 5.0 + base.n_ci_sites * 50.0);
-  const instMw = homes * 0.005 + ci * 0.050;
-  const instMwh = homes * 0.010 + ci * 0.100;
-  const p50Up = base.p50_upward_mw * scale;
-  const p90Up = base.p90_firm_upward_mw * scale;
-  const p90Dn = base.p90_firm_downward_mw * scale;
-  const gross = Math.round(base.annual_gross_vpp_rev_pln * scale);
-  const net = Math.round(gross * 0.78);
-
-  Plotly.react("vppPlot", [{
-    x: ["Installed BESS", "P50 upward", "P90 upward", "P90 downward"],
-    y: [instMw, p50Up, p90Up, p90Dn],
-    type: "bar",
-    marker: {color: [css("--muted"), css("--s4"), css("--s1"), css("--s3")]}
-  }], baseLayout({
-    shapes: [{type: "line", x0: -0.5, x1: 3.5, y0: 1.0, y1: 1.0, line: {color: css("--bad"), width: 1.2, dash: "dash"}}],
-    yaxis: {title: "MW", gridcolor: css("--grid"), linecolor: css("--axis")}
-  }), CFG);
-
-  document.getElementById("vppTable").innerHTML = `
-    <thead><tr><th class="l">Quantity</th><th>Value</th><th class="l">Note</th></tr></thead>
-    <tbody>
-      <tr><td class="l">Installed battery power / energy</td><td>${instMw.toFixed(2)} MW / ${instMwh.toFixed(2)} MWh</td><td class="l">${homes} homes + ${ci} C&amp;I sites</td></tr>
-      <tr><td class="l">P50 median upward reserve</td><td>${p50Up.toFixed(2)} MW</td><td class="l">15-minute discharge + flexible load drop</td></tr>
-      <tr class="sel"><td class="l">P90 firm reserve (upward / downward)</td><td>${p90Up.toFixed(2)} MW / ${p90Dn.toFixed(2)} MW</td><td class="l">${p90Up >= 1.0 ? "Meets 1.0 MW minimum bid size" : "Below 1.0 MW direct bid threshold"}</td></tr>
-      <tr><td class="l">Illustrative gross reserve &amp; intraday value</td><td>${fmt(gross, 0)} PLN/yr</td><td class="l">Above local bill savings</td></tr>
-      <tr><td class="l">Illustrative net share to asset owners (78 %)</td><td>${fmt(net, 0)} PLN/yr</td><td class="l">~${fmt(base.vpp_bonus_per_prosumer_home_pln_yr, 0)} PLN/home/yr</td></tr>
-    </tbody>`;
-}
-
-["tariffSel", "pvRng", "bessRng", "flexSel"].forEach(id => document.getElementById(id).oninput = renderProsumer);
+document.getElementById("tariffSel").oninput = renderProsumer;
 document.getElementById("haStepRng").oninput = renderHaStep;
-["vendorSel", "invIp", "wdSel"].forEach(id => document.getElementById(id).oninput = renderVendor);
-["vppHomesRng", "vppCiRng"].forEach(id => document.getElementById(id).oninput = renderVpp);
 document.getElementById("haPlayBtn").onclick = () => {
   const btn = document.getElementById("haPlayBtn");
   if (haTimer) { clearInterval(haTimer); haTimer = null; btn.textContent = "Play 24 h"; btn.classList.remove("on"); return; }
@@ -515,14 +360,13 @@ document.getElementById("haPlayBtn").onclick = () => {
   }, 180);
 };
 
+document.getElementById("yamlBox").textContent = D.ha_yaml;
 renderTiles();
 renderProsumer();
 renderWeek();
 renderCi();
 renderHil();
 renderHaStep();
-renderVendor();
-renderVpp();
 </script>
 </body>
 </html>

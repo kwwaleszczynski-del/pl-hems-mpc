@@ -1,4 +1,5 @@
-,annual_energy_dist_pln,annual_capacity_fee_pln,effective_k_mult,k1_days_share_pct,max_peak_kw,exceed_quarters_per_yr,annual_exceed_penalty_pln,annual_export_rev_pln,annual_deg_cost_pln,annual_total_net_cost_pln
-no_bess,130394.0,10820.0,0.847,21.4,55.3,1154.0,5099.0,268.0,0.0,146046.0
-uncontrolled_bess,127675.0,10819.0,0.847,21.4,55.3,1154.0,5099.0,26.0,545.0,144111.0
-mpc_ci_ems,127086.0,3127.0,0.299,87.3,55.3,788.0,3697.0,263.0,2459.0,136105.0
+mode,annual_energy_dist_pln,annual_capacity_fee_pln,annual_capacity_fee_unmodulated_pln,effective_k_mult,k1_days_share_pct,max_import_kw,quarters_above_limit_per_yr,annual_export_rev_pln,annual_deg_cost_pln,annual_total_net_cost_pln,days_K1,days_K2,days_K3,days_K4
+no_bess,130054.0,14518.0,17592.0,0.825,22.2,55.3,1138.0,273.0,0.0,144299.0,56,18,13,165
+self_consumption,127299.0,14496.0,17583.0,0.824,22.6,55.3,1138.0,29.0,551.0,142317.0,57,17,13,165
+ratio_rule,124964.0,3852.0,15415.0,0.25,88.5,54.1,253.0,30.0,2680.0,131466.0,223,10,7,12
+milp_oracle,109305.0,2710.0,15385.0,0.176,98.4,40.0,0.0,327.0,5151.0,116839.0,248,4,0,0

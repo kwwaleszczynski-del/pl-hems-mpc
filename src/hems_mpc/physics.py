@@ -1,4 +1,4 @@
-"""Physical models of rooftop PV, 2R2C building + heat pump COP, EV charging, and LFP battery."""
+"""Rooftop PV model, heat pump COP curve, plant parameters and synthetic household load profiles."""
 
 from __future__ import annotations
 
@@ -22,17 +22,10 @@ class ProsumerPlantSpec:
     eta_dis: float = 0.955
     bess_standby_kw: float = 0.035
     cycle_deg_cost_pln_mwh: float = 160.0
-    # Building 2R2C + Air-to-Water Heat Pump (floor heating slab)
+    # Air-to-water heat pump; steady-state heat demand from one envelope UA value (no RC building model)
     hp_max_el_kw: float = 3.5
-    hp_min_mod: float = 0.25
-    c_air_kwh_per_k: float = 2.2      # indoor air + furniture thermal capacity
-    c_slab_kwh_per_k: float = 14.5    # underfloor screed slab thermal mass (~14.5 kWh/K)
     ua_env_kw_per_k: float = 0.165    # envelope heat loss coefficient (165 W/K -> 5.8 kWth at -15°C)
-    ua_slab_air_kw_per_k: float = 1.15
-    t_in_min_c: float = 20.5
     t_in_target_c: float = 21.3
-    t_in_max_c: float = 22.8
-    t_slab_max_c: float = 29.0
     # EV charger (11 kW 3-phase Wallbox)
     ev_max_kw: float = 11.0
     ev_eta: float = 0.93
@@ -55,8 +48,8 @@ def simulate_rooftop_pv_kw(
 ) -> np.ndarray:
     """Compute 15-minute AC power (kW) of a crystalline-silicon rooftop PV array.
 
-    Uses solar position, isotropic sky diffuse + Hay-like beam projection, Faiman module
-    temperature model, and temperature coefficient gamma = -0.36 %/K.
+    Uses solar position, beam on the tilted plane plus isotropic sky diffuse and ground reflection,
+    a Faiman-type module temperature model, and temperature coefficient gamma = -0.36 %/K.
     """
     # Day of year and fractional UTC hour
     doy = np.asarray(ts_utc.day_of_year, dtype=float)
@@ -118,7 +111,10 @@ def generate_household_profiles(
     ghi_wm2: np.ndarray,
     seed: int = 42,
 ) -> pd.DataFrame:
-    """Generate realistic 15-minute non-shiftable appliance load, DHW heat demand, and EV trips."""
+    """Generate a synthetic 15-minute household: appliance load, heating gains/season and EV plug-in schedule.
+
+    None of these profiles is measured; they are parametric shapes with random noise (fixed seed).
+    """
     rng = np.random.default_rng(seed)
     ts_local = ts_utc.tz_convert("Europe/Warsaw")
     n = len(ts_utc)
@@ -126,7 +122,7 @@ def generate_household_profiles(
     weekday = np.asarray(ts_local.day_of_week)
     doy = np.asarray(ts_local.day_of_year)
 
-    # 1. Base household electrical appliances (kW): ~4,100 kWh/yr
+    # 1. Base household electrical appliances (kW): ~5,000 kWh/yr
     morning_bump = 0.45 * np.exp(-0.5 * ((hour - 7.5) / 1.1) ** 2)
     evening_bump = 0.95 * np.exp(-0.5 * ((hour - 19.2) / 1.8) ** 2)
     midday_wknd = np.where(weekday >= 5, 0.40 * np.exp(-0.5 * ((hour - 13.5) / 2.0) ** 2), 0.12)

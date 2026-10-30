@@ -1,4 +1,4 @@
-"""Controllers for the residential prosumer (PV+BESS+HP+EV) and C&I site (B23 + K-factor + peak shaving)."""
+"""Controllers for the residential prosumer (PV+BESS+HP+EV) and the C&I site (B23 + capacity-fee K-factor)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from scipy.optimize import milp, LinearConstraint, Bounds
 from scipy.sparse import csc_matrix
 
 from .physics import ProsumerPlantSpec, heat_pump_cop
+from .tariffs import K_BANDS, compute_ci_k_factor
 
 
 def compute_heating_load_kwth(
@@ -17,10 +18,10 @@ def compute_heating_load_kwth(
     heating_active: np.ndarray,
     spec: ProsumerPlantSpec,
 ) -> np.ndarray:
-    """Baseline thermal demand (kWth) needed to hold indoor temperature at t_in_target_c."""
+    """Steady-state heat demand (kWth) to hold t_in_target_c: UA x (T_in - T_out) minus gains, plus DHW."""
     loss_kwth = np.maximum(0.0, spec.ua_env_kw_per_k * (spec.t_in_target_c - temp_out_c))
     net_sh = np.where(heating_active, np.maximum(0.0, loss_kwth - solar_gain_kwth - internal_gain_kwth), 0.0)
-    # Add domestic hot water (DHW) baseline (~2.8 kWh_th/day concentrated morning & evening)
+    # Domestic hot water (DHW) as a flat 0.12 kWth (~2.9 kWh_th/day)
     return net_sh + 0.12
 
 
@@ -40,9 +41,14 @@ def solve_day_milp(
     spec: ProsumerPlantSpec,
     deposit_shadow_val: float = 0.82,
 ) -> dict[str, np.ndarray]:
-    """Solve the 1-day (or rolling window) LP/MILP for PV curtailment, BESS, Heat Pump buffer, and EV.
+    """Solve one day's MILP for PV curtailment, battery, heat-pump storage and EV charging.
 
-    Decision variables per step t in 0..T-1 (8*T variables):
+    The only integer variable is a per-step binary that forbids importing and exporting in the same
+    quarter-hour (a single meter nets them). Prices enter through heuristic weights: active energy and
+    export credit are scaled by `deposit_shadow_val` (deposit money is worth less than cash because part of
+    it may expire), and the end-of-day battery energy gets a terminal value so the day does not end empty.
+
+    Decision variables per step t in 0..T-1 (10*T variables):
       0: p_imp[t]     >= 0 (grid import kW)
       1: p_exp[t]     >= 0 (grid export kW)
       2: p_ch[t]      >= 0 (battery charge kW)
@@ -51,10 +57,14 @@ def solve_day_milp(
       5: p_hp_el[t]   >= 0 (heat pump electrical power kW)
       6: p_ev_el[t]   >= 0 (EV charging power kW)
       7: e_soc[t]     in [soc_min, soc_max] (battery stored energy kWh at end of step t)
-      8: e_th[t]      in [-2.5, +8.5] (thermal slab buffer state kWh_th relative to nominal)
+      8: e_th[t]      in [-1.5, +9.5] (heat stored in the floor slab, kWh_th relative to nominal)
+      9: u_imp[t]     in {0, 1} (1 = importing allowed, 0 = exporting allowed)
+
+    The heat store is one linear state with 1.5 % relaxation per quarter-hour towards nominal; the heat
+    demand itself comes from `compute_heating_load_kwth` (no RC model of the building).
     """
     T = len(pv_avail_kw)
-    n_vars = 9 * T
+    n_vars = 10 * T
 
     def idx(var_id: int, t: int) -> int:
         return var_id * T + t
@@ -81,10 +91,10 @@ def solve_day_milp(
         c[idx(2, t)] = dt_h * 0.001
         c[idx(3, t)] = dt_h * deg_cost_kwh
         c[idx(4, t)] = 0.0
-        # Slight penalty for high slab temperature (higher supply temp lowers COP by ~4%)
         c[idx(5, t)] = 0.0
         c[idx(6, t)] = 0.0
         c[idx(7, t)] = 0.0
+        # Small weight against holding heat in the slab
         c[idx(8, t)] = dt_h * 0.002
 
         ub[idx(0, t)] = spec.grid_max_kw
@@ -96,8 +106,9 @@ def solve_day_milp(
         ub[idx(6, t)] = spec.ev_max_kw if ev_plugged[t] else 0.0
         lb[idx(7, t)] = spec.soc_min * spec.bess_energy_kwh
         ub[idx(7, t)] = spec.soc_max * spec.bess_energy_kwh
-        lb[idx(8, t)] = -1.5  # max allowed slight cool-down (-0.1 K)
-        ub[idx(8, t)] = 9.5   # max pre-heating stored in floor slab (+0.65 K)
+        lb[idx(8, t)] = -1.5  # allowed heat deficit (kWh_th)
+        ub[idx(8, t)] = 9.5   # allowed pre-heating stored in the slab (kWh_th)
+        ub[idx(9, t)] = 1.0
 
     # Terminal SoC reward so battery doesn't dump for nothing at midnight
     mean_sell = max(0.25, float(np.mean(buy_cost_kwh)) * 0.72)
@@ -175,9 +186,34 @@ def solve_day_milp(
         rhs.append(target_ev)
         row_i += 1
 
+    # 5. No simultaneous import and export: p_imp <= M * u, p_exp <= M * (1 - u)
+    for t in range(T):
+        rows.extend([row_i, row_i])
+        cols.extend([idx(0, t), idx(9, t)])
+        vals.extend([1.0, -spec.grid_max_kw])
+        lhs.append(-np.inf)
+        rhs.append(0.0)
+        row_i += 1
+        rows.extend([row_i, row_i])
+        cols.extend([idx(1, t), idx(9, t)])
+        vals.extend([1.0, spec.grid_max_kw])
+        lhs.append(-np.inf)
+        rhs.append(spec.grid_max_kw)
+        row_i += 1
+
+    integrality = np.zeros(n_vars)
+    integrality[9 * T :] = 1
     A = csc_matrix((vals, (rows, cols)), shape=(row_i, n_vars))
-    res = milp(c=c, bounds=Bounds(lb, ub), constraints=LinearConstraint(A, lhs, rhs))
-    x = res.x if (res.success and res.x is not None) else np.zeros(n_vars)
+    res = milp(
+        c=c,
+        integrality=integrality,
+        bounds=Bounds(lb, ub),
+        constraints=LinearConstraint(A, lhs, rhs),
+        options={"mip_rel_gap": 1e-6},
+    )
+    if not res.success or res.x is None:
+        raise RuntimeError(f"Day MILP failed: {res.message}")
+    x = res.x
 
     return {
         "p_imp_kw": x[0 * T : 1 * T],
@@ -200,14 +236,15 @@ def run_prosumer_strategy(
     temp_out_c: np.ndarray,
     spec: ProsumerPlantSpec,
 ) -> pd.DataFrame:
-    """Simulate a full multi-year horizon (15-min steps) under one of the 5 control strategies.
+    """Simulate the whole horizon (15-min steps) under one of the 5 control strategies.
 
     Strategies:
-      - `uncontrolled`: factory Max Self-Consumption + hysteresis HP + plug-and-charge EV
-      - `neg_price_guard`: self-consumption + zero-export at RCE <= 0 + midday solar battery shift
-      - `ha_heuristic`: Home Assistant YAML rule set (night grid charge + pre-heat + night EV)
-      - `mpc_forecast`: realizable rolling-horizon MILP using only D-1/as-of price & weather forecasts
-      - `milp_oracle`: perfect-foresight MILP upper bound
+      - `uncontrolled`: battery self-consumption, heat pump follows demand, EV charges on arrival
+      - `neg_price_guard`: self-consumption + zero export at RCE <= 0 + battery room kept for midday
+      - `ha_heuristic`: fixed time-window rules (night grid charge, pre-heat, night EV)
+      - `mpc_forecast`: day MILP solved once per local day at 00:00 on a synthetic forecast, then executed
+        by a real-time rule layer on actual PV, load and RCE
+      - `milp_oracle`: the same day MILP on actual data (perfect foresight), executed as planned
     """
     dt_h = 0.25
     n = len(df_prices)
@@ -363,7 +400,7 @@ def run_prosumer_strategy(
             soc_kwh[t] = cur_soc
 
     else:
-        # Day-by-day MILP: `mpc_forecast` (no look-ahead on weather/load) vs `milp_oracle` (perfect foresight)
+        # One MILP per local calendar day: `mpc_forecast` (synthetic forecast) vs `milp_oracle` (actual data)
         rng = np.random.default_rng(123)
         dates = ts_local.dt.date.to_numpy()
         unique_days = pd.unique(dates)
@@ -405,12 +442,11 @@ def run_prosumer_strategy(
                 cur_soc = float(sol["soc_kwh"][-1])
 
             elif strategy == "mpc_forecast":
-                # Realizable forecast available before delivery day:
-                # - Day-ahead SDAC prices are known (published at 12:45 D-1);
-                # - RCE intraday variation and PV/load have realistic forecast errors (~12% PV nMAE, ~15% load noise)
+                # Synthetic forecast (not a forecasting model): actual PV and base load times independent
+                # N(1, 0.12) and N(1, 0.14) noise per quarter-hour, RCE as 0.92 x SDAC + N(0, 22 PLN/MWh).
+                # Import prices, heat demand, COP and the EV plug-in schedule and energy are taken as known.
                 pv_fc = np.clip(pv_avail_kw[mask] * rng.normal(1.0, 0.12, size=T_d), 0.0, spec.pv_inverter_kw)
                 load_fc = np.clip(base_load[mask] * rng.normal(1.0, 0.14, size=T_d), 0.12, 4.5)
-                # RCE forecast from known SDAC price
                 rce_fc_raw = sdac[mask] * 0.92 + rng.normal(0.0, 22.0, size=T_d)
                 rce_fc_pos = np.maximum(0.0, rce_fc_raw)
 
@@ -473,6 +509,7 @@ def run_prosumer_strategy(
     out["pv_avail_kw"] = pv_avail_kw
     out["base_load_kw"] = base_load
     out["p_hp_kw"] = p_hp
+    out["p_hp_need_kw"] = q_heat_req / cop
     out["p_ev_kw"] = p_ev
     out["p_ch_kw"] = p_ch
     out["p_dis_kw"] = p_dis
@@ -487,18 +524,154 @@ def run_prosumer_strategy(
     return out
 
 
+def solve_ci_day_milp(
+    dt_h: float,
+    load_kw: np.ndarray,
+    pv_kw: np.ndarray,
+    buy_pln_mwh: np.ndarray,
+    rce_pln_mwh: np.ndarray,
+    cap_window: np.ndarray,
+    cap_rate_pln_mwh: float,
+    soc_init_kwh: float,
+    bess_p_kw: float = 50.0,
+    eta: float = 0.955,
+    soc_min_kwh: float = 10.0,
+    soc_max_kwh: float = 95.0,
+    deg_cost_pln_mwh: float = 150.0,
+    limit_kw: float = 40.0,
+    over_weight_pln_kwh: float = 10.0,
+) -> dict[str, np.ndarray | str]:
+    """Solve one day of the C&I site as a MILP that includes the capacity-fee K-group choice.
+
+    Per step: import, export, charge, discharge, curtailment, SoC, import above `limit_kw` and a binary that
+    forbids charging and discharging at the same time. On a working day four binaries pick the group K1..K4;
+    the chosen group's limit on (mean import in fee hours) / (mean import in other hours) - 1 is enforced
+    and the fee A x energy x rate enters the cost (see `tariffs.K_BANDS`). The day must end with at least
+    `soc_init_kwh` stored. Import may exceed `limit_kw` only up to the site load (charging never pushes it
+    above the limit) and each kWh above it carries a control weight, not a tariff charge.
+    """
+    T = len(load_kw)
+    nv = 8  # imp, exp, ch, dis, curt, soc, over, v_ch
+    work = bool(np.any(cap_window))
+    n_k = len(K_BANDS)
+    n_vars = nv * T + (2 * n_k if work else 0)
+    e0, z0 = nv * T, nv * T + n_k
+
+    def idx(var_id: int, t: int) -> int:
+        return var_id * T + t
+
+    c = np.zeros(n_vars)
+    lb = np.zeros(n_vars)
+    ub = np.full(n_vars, np.inf)
+    rce_pos = np.maximum(0.0, rce_pln_mwh)
+    for t in range(T):
+        c[idx(0, t)] = dt_h * buy_pln_mwh[t] / 1000.0
+        c[idx(1, t)] = -dt_h * rce_pos[t] / 1000.0 + (dt_h * 0.01 if rce_pln_mwh[t] <= 0.0 else 0.0)
+        c[idx(3, t)] = dt_h * deg_cost_pln_mwh / 1000.0
+        c[idx(6, t)] = dt_h * over_weight_pln_kwh
+        ub[idx(0, t)] = max(limit_kw, float(load_kw[t]))
+        ub[idx(1, t)] = float(pv_kw[t])
+        ub[idx(2, t)] = bess_p_kw
+        ub[idx(3, t)] = bess_p_kw
+        ub[idx(4, t)] = float(pv_kw[t])
+        lb[idx(5, t)] = soc_min_kwh
+        ub[idx(5, t)] = soc_max_kwh
+        ub[idx(7, t)] = 1.0
+    lb[idx(5, T - 1)] = max(soc_min_kwh, min(soc_init_kwh, soc_max_kwh))
+
+    rows, cols, vals, lhs, rhs = [], [], [], [], []
+    r = 0
+
+    def add(entries: list[tuple[int, float]], lo: float, hi: float) -> None:
+        nonlocal r
+        for col, val in entries:
+            rows.append(r)
+            cols.append(col)
+            vals.append(val)
+        lhs.append(lo)
+        rhs.append(hi)
+        r += 1
+
+    for t in range(T):
+        net = float(load_kw[t] - pv_kw[t])
+        add([(idx(0, t), 1.0), (idx(1, t), -1.0), (idx(2, t), -1.0), (idx(3, t), 1.0), (idx(4, t), -1.0)], net, net)
+        add([(idx(1, t), 1.0), (idx(4, t), 1.0)], -np.inf, float(pv_kw[t]))
+        soc_terms = [(idx(5, t), 1.0), (idx(2, t), -dt_h * eta), (idx(3, t), dt_h / eta)]
+        if t == 0:
+            add(soc_terms, soc_init_kwh, soc_init_kwh)
+        else:
+            add(soc_terms + [(idx(5, t - 1), -1.0)], 0.0, 0.0)
+        add([(idx(0, t), 1.0), (idx(6, t), -1.0)], -np.inf, limit_kw)
+        add([(idx(2, t), 1.0), (idx(7, t), -bess_p_kw)], -np.inf, 0.0)
+        add([(idx(3, t), 1.0), (idx(7, t), bess_p_kw)], -np.inf, bess_p_kw)
+
+    integrality = np.zeros(n_vars)
+    integrality[idx(7, 0) : idx(7, 0) + T] = 1
+    if work:
+        peak_t = np.where(cap_window)[0]
+        off_t = np.where(~cap_window)[0]
+        big_e = dt_h * len(peak_t) * (float(np.max(load_kw)) + bess_p_kw)
+        big_p = float(np.max(load_kw)) + 2.0 * bess_p_kw
+        add([(e0 + k, 1.0) for k in range(n_k)] + [(idx(0, t), -dt_h) for t in peak_t], 0.0, 0.0)
+        add([(z0 + k, 1.0) for k in range(n_k)], 1.0, 1.0)
+        for k, (upper_pct, a_coef, _) in enumerate(K_BANDS):
+            c[e0 + k] = cap_rate_pln_mwh * a_coef / 1000.0
+            ub[z0 + k] = 1.0
+            integrality[z0 + k] = 1
+            add([(e0 + k, 1.0), (z0 + k, -big_e)], -np.inf, 0.0)
+            if np.isfinite(upper_pct):
+                ratio = 1.0 + (upper_pct - 0.01) / 100.0
+                terms = [(idx(0, t), 1.0 / len(peak_t)) for t in peak_t]
+                terms += [(idx(0, t), -ratio / len(off_t)) for t in off_t]
+                add(terms + [(z0 + k, big_p)], -np.inf, big_p)
+
+    A = csc_matrix((vals, (rows, cols)), shape=(r, n_vars))
+    res = milp(
+        c=c,
+        integrality=integrality,
+        bounds=Bounds(lb, ub),
+        constraints=LinearConstraint(A, lhs, rhs),
+        options={"mip_rel_gap": 1e-6},
+    )
+    if not res.success or res.x is None:
+        raise RuntimeError(f"C&I day MILP failed: {res.message}")
+    x = res.x
+    band = "-"
+    if work:
+        band = K_BANDS[int(np.argmax(x[z0 : z0 + n_k]))][2]
+    return {
+        "p_imp_kw": x[idx(0, 0) : idx(0, 0) + T],
+        "p_exp_kw": x[idx(1, 0) : idx(1, 0) + T],
+        "p_ch_kw": x[idx(2, 0) : idx(2, 0) + T],
+        "p_dis_kw": x[idx(3, 0) : idx(3, 0) + T],
+        "p_curt_kw": x[idx(4, 0) : idx(4, 0) + T],
+        "soc_kwh": x[idx(5, 0) : idx(5, 0) + T],
+        "band": band,
+    }
+
+
+CI_MODES = ("no_bess", "self_consumption", "ratio_rule", "milp_oracle")
+
+
 def simulate_ci_site(
     df_prices: pd.DataFrame,
     pv_unit_kw: np.ndarray,
     seed: int = 77,
-) -> dict[str, dict[str, float]]:
-    """Simulate a small C&I facility (50 kWp PV + 100 kWh / 50 kW BESS, 40 kW contracted power limit) on B23.
+    ratio_target: float = 1.04,
+) -> tuple[dict[str, dict], dict[str, np.ndarray]]:
+    """Simulate a small C&I site (50 kWp PV, 100 kWh / 50 kW battery, 40 kW contracted power) on B23.
 
-    Compares:
-      1. `no_bess`: 50 kWp PV only, no battery
-      2. `uncontrolled_bess`: 100 kWh BESS running factory self-consumption
-      3. `mpc_ci_ems`: 15-min MILP optimizing SDAC + B23 arbitrage, 40 kW peak shaving, and K1 capacity-fee shaping
+    The load is synthetic (a parametric day-shift shape with noise, not measured data). Modes:
+      1. `no_bess`: PV only, curtailed when RCE <= 0
+      2. `self_consumption`: battery charges from PV surplus and covers any deficit
+      3. `ratio_rule`: causal rule on working days: charge from the grid 00:00-06:59 as fast as the 40 kW limit
+         allows, keep import in the fee hours at or below `ratio_target` x the mean import of 00:00-06:59 (and
+         below 40 kW), and lift import in 22:00-23:59 to that same mean by charging; free days as mode 2
+      4. `milp_oracle`: `solve_ci_day_milp` per local day on actual load, PV and prices (perfect foresight)
+
+    Returns the annual summary per mode and the import series per mode (kW).
     """
+
     rng = np.random.default_rng(seed)
     dt_h = 0.25
     n = len(df_prices)
@@ -506,121 +679,125 @@ def simulate_ci_site(
     hour = np.asarray(ts_local.dt.hour + ts_local.dt.minute / 60.0)
     free_day = ~df_prices["cap_window"].to_numpy() & ((ts_local.dt.day_of_week >= 5).to_numpy())
     cap_win = df_prices["cap_window"].to_numpy()
+    cap_rate = df_prices["cap_fee_base_pln_mwh"].to_numpy()
 
-    # Realistic C&I load (cold storage + daytime production line): 18 kW night base, 36-52 kW daytime peaks
+    # Synthetic C&I load (cold storage + daytime shift): 17.5 kW night base, 34-46 kW daytime, x N(1, 0.11)
     work_shift = (~free_day) & (hour >= 7.0) & (hour < 18.0)
     ci_load_kw = np.where(work_shift, 34.0 + 12.0 * np.sin(np.pi * (hour - 7.0) / 11.0), 17.5)
     ci_load_kw = np.clip(ci_load_kw * rng.normal(1.0, 0.11, size=n), 12.0, 56.0)
     pv_ci_kw = pv_unit_kw * 5.0  # 50 kWp
 
     contract_limit_kw = 40.0
-    bess_e_kwh = 100.0
     bess_p_kw = 50.0
     eta = 0.955
+    soc_lo, soc_hi = 10.0, 95.0
+    deg_pln_mwh = 150.0
 
     buy_tot = df_prices["total_buy_no_cap_pln_mwh"].to_numpy()
     rce_pos = df_prices["rce_credit_pln_mwh"].to_numpy()
     rce_raw = df_prices["rce_raw_pln_mwh"].to_numpy()
+    dates = ts_local.dt.date.to_numpy()
+    day_has_fee = pd.Series(cap_win).groupby(dates).transform("any").to_numpy()
 
-    results: dict[str, dict[str, float]] = {}
+    results: dict[str, dict] = {}
+    imports: dict[str, np.ndarray] = {}
 
-    for mode in ("no_bess", "uncontrolled_bess", "mpc_ci_ems"):
+    for mode in CI_MODES:
         p_imp = np.zeros(n)
         p_exp = np.zeros(n)
         p_dis = np.zeros(n)
         soc = 50.0
 
-        for t in range(n):
-            ld = ci_load_kw[t]
-            pv = pv_ci_kw[t]
-            net_ld = ld - pv
-            h = hour[t]
+        if mode == "milp_oracle":
+            for d_val in pd.unique(dates):
+                m = np.where(dates == d_val)[0]
+                sol = solve_ci_day_milp(
+                    dt_h=dt_h,
+                    load_kw=ci_load_kw[m],
+                    pv_kw=pv_ci_kw[m],
+                    buy_pln_mwh=buy_tot[m],
+                    rce_pln_mwh=rce_raw[m],
+                    cap_window=cap_win[m],
+                    cap_rate_pln_mwh=float(np.max(cap_rate[m])),
+                    soc_init_kwh=soc,
+                    bess_p_kw=bess_p_kw,
+                    eta=eta,
+                    soc_min_kwh=soc_lo,
+                    soc_max_kwh=soc_hi,
+                    deg_cost_pln_mwh=deg_pln_mwh,
+                    limit_kw=contract_limit_kw,
+                )
+                p_imp[m] = sol["p_imp_kw"]
+                p_exp[m] = sol["p_exp_kw"]
+                p_dis[m] = sol["p_dis_kw"]
+                soc = float(sol["soc_kwh"][-1])
+        else:
+            e_morning = 0.0
+            n_morning = 0
+            for t in range(n):
+                ld = ci_load_kw[t]
+                pv = pv_ci_kw[t]
+                net_ld = ld - pv
+                h = hour[t]
+                if h == 0.0:
+                    e_morning, n_morning = 0.0, 0
+                ch = dis = curt = 0.0
+                room_kw = max(0.0, (soc_hi - soc) / (dt_h * eta))
+                avail_kw = max(0.0, (soc - soc_lo) * eta / dt_h)
 
-            if mode == "no_bess":
-                curt = max(0.0, -net_ld) if rce_raw[t] <= 0.0 else 0.0
-                g = ld - (pv - curt)
-                p_imp[t] = max(0.0, g)
-                p_exp[t] = max(0.0, -g)
-
-            elif mode == "uncontrolled_bess":
-                if net_ld < 0:
-                    ch = min(bess_p_kw, -net_ld, (95.0 - soc) / (dt_h * eta))
-                    soc += dt_h * ch * eta
-                    g = net_ld + ch
-                else:
-                    dis = min(bess_p_kw, net_ld, (soc - 10.0) * eta / dt_h)
-                    soc -= dt_h * dis / eta
-                    p_dis[t] = dis
-                    g = net_ld - dis
-                p_imp[t] = max(0.0, g)
-                p_exp[t] = max(0.0, -g)
-
-            elif mode == "mpc_ci_ems":
-                # 1. Strict peak-shaving above contracted power limit (40 kW)
-                # 2. Capacity-fee K1 shaping: on working days shift import from 07:00-22:00 into 22:00-07:00
-                #    so that mean peak import power <= 1.045 * mean off-peak import power (K1 = 83% discount!)
-                if not cap_win[t]:
-                    # Off-peak window (22:00-07:00 or weekend): charge battery up to 92% SoC during cheapest hours
-                    if h < 5.5 or buy_tot[t] < 460.0 or net_ld < 0:
-                        room = max(0.0, contract_limit_kw - max(0.0, net_ld))
-                        ch_max = min(bess_p_kw, (94.0 - soc) / (dt_h * eta))
-                        ch = min(ch_max, room + max(0.0, -net_ld))
-                        soc += dt_h * ch * eta
-                        curt = max(0.0, -net_ld - ch) if rce_raw[t] <= 0.0 else 0.0
-                        g = ld + ch - (pv - curt)
-                    else:
-                        g = net_ld
-                else:
-                    # Peak window (07:00-22:00 working day): absorb solar when available, otherwise cap grid import
-                    # to ~19.5 kW (matching night off-peak average) and shave all peaks > 40 kW
+                if mode == "no_bess":
+                    pass
+                elif mode == "self_consumption" or not day_has_fee[t]:
                     if net_ld < 0:
-                        ch = min(bess_p_kw, -net_ld, (95.0 - soc) / (dt_h * eta))
-                        soc += dt_h * ch * eta
-                        curt = max(0.0, -net_ld - ch) if rce_raw[t] <= 0.0 else 0.0
-                        g = ld + ch - (pv - curt)
+                        ch = min(bess_p_kw, -net_ld, room_kw)
                     else:
-                        target_cap = 17.5 if buy_tot[t] > 520.0 else 21.5
-                        want_dis = max(0.0, net_ld - target_cap)
-                        dis = min(bess_p_kw, want_dis, (soc - 10.0) * eta / dt_h)
-                        soc -= dt_h * dis / eta
-                        p_dis[t] = dis
-                        g = net_ld - dis
+                        dis = min(bess_p_kw, net_ld, avail_kw)
+                else:  # ratio_rule on a working day
+                    m_off = e_morning / n_morning if n_morning else net_ld
+                    if h < 7.0:
+                        ch = min(bess_p_kw, room_kw, max(0.0, contract_limit_kw - net_ld))
+                    elif cap_win[t]:
+                        if net_ld < 0:
+                            ch = min(bess_p_kw, -net_ld, room_kw)
+                        else:
+                            cap_kw = min(contract_limit_kw, ratio_target * m_off)
+                            dis = min(bess_p_kw, max(0.0, net_ld - cap_kw), avail_kw)
+                    else:
+                        ch = min(bess_p_kw, room_kw, max(0.0, m_off - net_ld))
+
+                soc += dt_h * (ch * eta - dis / eta)
+                if rce_raw[t] <= 0.0:
+                    curt = max(0.0, -(net_ld + ch - dis))
+                g = ld + ch - dis - (pv - curt)
                 p_imp[t] = max(0.0, g)
                 p_exp[t] = max(0.0, -g)
+                p_dis[t] = dis
+                if h < 7.0:
+                    e_morning += p_imp[t]
+                    n_morning += 1
 
-        from .tariffs import compute_ci_k_factor
         e_imp_mwh = p_imp * dt_h / 1000.0
         e_exp_mwh = p_exp * dt_h / 1000.0
-        k_stats = compute_ci_k_factor(e_imp_mwh, cap_win, df_prices.index)
+        k_stats = compute_ci_k_factor(e_imp_mwh, cap_win, df_prices.index, cap_rate)
 
         energy_dist_cost = float((e_imp_mwh * buy_tot).sum())
         export_rev = float((e_exp_mwh * rce_pos).sum())
-        exceed_kw = np.maximum(0.0, p_imp - contract_limit_kw)
-        exceed_quarters = int(np.sum(exceed_kw > 0.5))
-        # OSD penalty for exceeding contracted power: 10x capacity charge on top 15-min peaks
-        exceed_penalty_pln = float(np.sum(exceed_kw) * dt_h * 0.45 * 10.0)
-        deg_cost_pln = float((p_dis * dt_h / 1000.0).sum() * 150.0)
-
-        total_net_cost = (
-            energy_dist_cost
-            + k_stats["capacity_fee_actual_pln"]
-            + exceed_penalty_pln
-            + deg_cost_pln
-            - export_rev
-        )
-        # Scale to annual figures (divide by number of years in sample)
+        deg_cost_pln = float((p_dis * dt_h / 1000.0).sum() * deg_pln_mwh)
+        total_net_cost = energy_dist_cost + k_stats["capacity_fee_actual_pln"] + deg_cost_pln - export_rev
         n_years = max(1.0, n / (365.0 * 96.0))
         results[mode] = {
             "annual_energy_dist_pln": round(energy_dist_cost / n_years, 0),
             "annual_capacity_fee_pln": round(k_stats["capacity_fee_actual_pln"] / n_years, 0),
+            "annual_capacity_fee_unmodulated_pln": round(k_stats["capacity_fee_unmodulated_pln"] / n_years, 0),
             "effective_k_mult": k_stats["effective_k_multiplier"],
             "k1_days_share_pct": k_stats["k1_days_share_pct"],
-            "max_peak_kw": round(float(np.max(p_imp)), 1),
-            "exceed_quarters_per_yr": round(exceed_quarters / n_years, 1),
-            "annual_exceed_penalty_pln": round(exceed_penalty_pln / n_years, 0),
+            "k_days": k_stats["k_days"],
+            "max_import_kw": round(float(np.max(p_imp)), 1),
+            "quarters_above_limit_per_yr": round(int(np.sum(p_imp > contract_limit_kw + 0.5)) / n_years, 1),
             "annual_export_rev_pln": round(export_rev / n_years, 0),
             "annual_deg_cost_pln": round(deg_cost_pln / n_years, 0),
             "annual_total_net_cost_pln": round(total_net_cost / n_years, 0),
         }
+        imports[mode] = p_imp
 
-    return results
+    return results, imports

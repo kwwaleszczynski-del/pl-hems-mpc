@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pl-hems-mpc"
 version = "0.1.0"
-description = "15-minute Model Predictive Control (MILP) for a Polish prosumer home (PV, LFP battery, heat pump, EV) and a small C&I site (B23 + PSE capacity fee K-factor + peak shaving), tested in closed loop over a Modbus TCP / SunSpec register server with a Home Assistant MQTT bridge."
+description = "Daily 15-minute MILP dispatch for a Polish prosumer home (PV, LFP battery, heat pump, EV) under RCE net-billing and for a small C&I site on B23 with the capacity-fee K-groups, replayed over a localhost Modbus TCP emulator and exported as Home Assistant MQTT discovery payloads."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -29,4 +29,4 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "."]
+pythonpath = ["src"]

@@ -3,145 +3,234 @@
 [![tests](https://github.com/kwwaleszczynski-del/pl-hems-mpc/actions/workflows/ci.yml/badge.svg)](https://github.com/kwwaleszczynski-del/pl-hems-mpc/actions/workflows/ci.yml)
 
 A Polish house with rooftop PV, a battery, a heat pump and an EV charger sits under two price signals at once: its
-exports are credited to a 12-month FIFO deposit at the 15-minute market price RCE (floored at zero when RCE is
-negative), and its imports pay a flat (G11), two-zone (G12w) or dynamic day-ahead tariff plus distribution fees paid in
-cash. A commercial site on B23 faces a second rule: under Art. 70a of the Capacity Market Act, the PSE capacity fee
-(141.20 PLN/MWh in peak hours on working days) is cut by 83 % when peak import stays within 5 % of off-peak import
-(band K1).
+exports are credited to a 12-month FIFO deposit at the 15-minute market price RCE (zero when RCE is negative), and its
+imports pay a flat (G11), two-zone (G12w) or dynamic day-ahead tariff plus distribution fees paid in cash. A commercial
+site on B23 faces a second rule: on each working day the capacity fee (141.20 PLN/MWh in the second half of 2025,
+219.40 PLN/MWh in 2026, charged on energy drawn 07:00-21:59) is multiplied by 0.17 when mean import in those hours
+stays within 5 % of mean import in the other hours of the day (group K1 under Art. 70a of the Capacity Market Act).
 
-This repository models both cases at 15-minute resolution over the first full year of 15-minute SDAC and RCE prices in
-Poland (1 October 2025 to 30 September 2026, 35,040 quarter-hours), compares simple rule-based controls with a rolling
-mixed-integer program (MILP), checks the resulting set-points over a localhost Modbus TCP socket with a 15-minute
-watchdog, and packages the entities and inverter register maps for Home Assistant.
+This repository simulates both cases at 15-minute resolution from 1 October 2025 to 30 September 2026 (35,040
+quarter-hours) on real PSE prices (SDAC and RCE) and ERA5 weather, with **synthetic** household and C&I loads. It
+compares rule-based controls with a mixed-integer program (MILP) solved once per day, replays the resulting set-points
+over a localhost Modbus TCP emulator with a watchdog, and exports the entity states as Home Assistant MQTT discovery
+payloads.
 
 **Dashboard:** https://kwwaleszczynski-del.github.io/pl-hems-mpc/
 
-> Tariff rates, network charges and inverter register tables in this repository are illustrative configurations built
-> from public tariff sheets and manuals, not billing advice or certified wiring instructions. Check every register
-> address and firmware version against the manufacturer's manual before writing to a live inverter.
+> Loads are synthetic and energy and distribution rates are illustrative round numbers, not a specific supplier's or
+> DSO's tariff. The net-billing and capacity-fee rules are simplified readings of the statutes; sources are listed in
+> [Regulatory assumptions](#regulatory-assumptions-to-be-verified) and every rule must be verified before real use. The
+> Modbus register map belongs to the emulator in this repository and must not be written to a real inverter.
 
 ## Key results
 
 ### 1. Prosumer under 12-month FIFO net-billing
 
-10 kWp PV, 10 kWh / 5 kW LFP battery, floor-slab heat pump (2R2C thermal model) and 11 kW EV charger, 1 October 2025 to
-30 September 2026. Over that year RCE was zero or negative for 357.5 hours (1,430 quarter-hours, down to -1,458 PLN/MWh
-on 1 May 2026).
+10 kWp PV, 10 kWh / 5 kW LFP battery, heat pump (3.5 kW electric) with a floor-slab heat store and an 11 kW EV
+charger. Over the simulated year RCE was zero or negative for 357.5 hours (1,430
+quarter-hours), down to -1,457.6 PLN/MWh at 2026-05-01 14:15.
 
-| Tariff | Strategy | Import [MWh] | Export [MWh] | Curtailed [MWh] | Export at RCE ≤ 0 [MWh] | Net cash bill [PLN] | Battery wear [PLN] | Total [PLN/yr] | vs uncontrolled |
+| Tariff | Strategy | Import [MWh] | Export [MWh] | Curtailed [MWh] | Export at RCE <= 0 [MWh] | Net cash bill [PLN] | Battery wear [PLN] | Total [PLN/yr] | vs uncontrolled |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| G11 | Uncontrolled | 8.28 | 6.59 | 0.00 | 1.67 | 6,326 | 373 | 6,700 | - |
-| G11 | Negative-price guard | 8.28 | 4.99 | 1.61 | 0.00 | 6,293 | 373 | 6,666 | -34 (-0.5 %) |
-| G11 | YAML time rules | 8.11 | 4.76 | 1.56 | 0.00 | 6,212 | 369 | 6,581 | -119 (-1.8 %) |
-| G11 | MILP, forecast (realizable) | 7.37 | 4.80 | 0.99 | 0.00 | 5,551 | 330 | 5,881 | -819 (-12.2 %) |
-| G11 | MILP, perfect foresight | 7.31 | 4.82 | 0.90 | 0.00 | 5,429 | 334 | 5,763 | -937 (-14.0 %) |
-| G12w | Uncontrolled | 8.28 | 6.59 | 0.00 | 1.67 | 5,189 | 373 | 5,563 | - |
-| G12w | Negative-price guard | 8.28 | 4.99 | 1.61 | 0.00 | 4,098 | 373 | 4,471 | -1,092 (-19.6 %) |
-| G12w | YAML time rules | 8.33 | 4.83 | 1.58 | 0.00 | 3,967 | 369 | 4,336 | -1,227 (-22.0 %) |
-| G12w | MILP, forecast (realizable) | 8.38 | 5.58 | 1.11 | 0.00 | 3,150 | 425 | 3,574 | -1,988 (-35.7 %) |
-| G12w | MILP, perfect foresight | 8.78 | 6.08 | 0.97 | 0.00 | 2,970 | 478 | 3,448 | -2,115 (-38.0 %) |
-| Dynamic SDAC + G12w | Uncontrolled | 8.28 | 6.59 | 0.00 | 1.67 | 5,904 | 373 | 6,277 | - |
-| Dynamic SDAC + G12w | Negative-price guard | 8.28 | 4.99 | 1.61 | 0.00 | 4,909 | 373 | 5,282 | -995 (-15.9 %) |
-| Dynamic SDAC + G12w | YAML time rules | 8.28 | 4.82 | 1.59 | 0.00 | 4,591 | 394 | 4,985 | -1,292 (-20.6 %) |
-| Dynamic SDAC + G12w | MILP, forecast (realizable) | 7.72 | 4.97 | 1.02 | 0.00 | 3,573 | 427 | 4,001 | -2,277 (-36.3 %) |
-| Dynamic SDAC + G12w | MILP, perfect foresight | 7.65 | 5.01 | 0.90 | 0.00 | 3,440 | 453 | 3,893 | -2,384 (-38.0 %) |
+| G11 | Uncontrolled | 8.23 | 6.66 | 0.00 | 1.69 | 6,325 | 375 | 6,700 | - |
+| G11 | Negative-price guard | 8.23 | 5.03 | 1.63 | 0.00 | 6,288 | 374 | 6,662 | -38 (-0.6 %) |
+| G11 | Fixed time-window rules | 8.06 | 4.81 | 1.57 | 0.00 | 6,204 | 370 | 6,574 | -126 (-1.9 %) |
+| G11 | Daily MILP, noisy forecast | 7.34 | 4.86 | 1.01 | 0.00 | 5,549 | 331 | 5,880 | -820 (-12.2 %) |
+| G11 | Daily MILP, perfect foresight | 7.24 | 4.85 | 0.91 | 0.00 | 5,439 | 337 | 5,777 | -923 (-13.8 %) |
+| G12w | Uncontrolled | 8.23 | 6.66 | 0.00 | 1.69 | 5,181 | 375 | 5,556 | - |
+| G12w | Negative-price guard | 8.23 | 5.03 | 1.63 | 0.00 | 4,096 | 374 | 4,469 | -1,086 (-19.6 %) |
+| G12w | Fixed time-window rules | 8.28 | 4.88 | 1.59 | 0.00 | 3,963 | 370 | 4,333 | -1,223 (-22.0 %) |
+| G12w | Daily MILP, noisy forecast | 8.35 | 5.65 | 1.12 | 0.00 | 3,160 | 423 | 3,583 | -1,973 (-35.5 %) |
+| G12w | Daily MILP, perfect foresight | 8.55 | 5.97 | 0.96 | 0.00 | 3,003 | 485 | 3,488 | -2,067 (-37.2 %) |
+| Dynamic SDAC + G12w | Uncontrolled | 8.23 | 6.66 | 0.00 | 1.69 | 5,978 | 375 | 6,352 | - |
+| Dynamic SDAC + G12w | Negative-price guard | 8.23 | 5.03 | 1.63 | 0.00 | 4,996 | 374 | 5,370 | -983 (-15.5 %) |
+| Dynamic SDAC + G12w | Fixed time-window rules | 8.23 | 4.87 | 1.60 | 0.00 | 4,610 | 395 | 5,005 | -1,347 (-21.2 %) |
+| Dynamic SDAC + G12w | Daily MILP, noisy forecast | 7.67 | 5.03 | 1.04 | 0.00 | 3,547 | 427 | 3,974 | -2,378 (-37.4 %) |
+| Dynamic SDAC + G12w | Daily MILP, perfect foresight | 7.60 | 5.07 | 0.91 | 0.00 | 3,428 | 452 | 3,881 | -2,472 (-38.9 %) |
 
 ![Prosumer annual cost](docs/img/bill_comparison.png)
 
-- **A dynamic tariff without control costs more than G12w.** Moving an uncontrolled house from G12w (5,563 PLN/yr) to a
-  dynamic SDAC contract (6,277 PLN/yr) adds 714 PLN/yr: the EV plugs in at 17:30 into the evening price peak while the
-  battery is already full by 09:30 on sunny days, leaving 1.67 MWh/yr of midday PV exported at RCE ≤ 0 for zero credit.
-- **The realizable MILP saves 1,988 PLN/yr on G12w and 2,277 PLN/yr on Dynamic SDAC + G12w** (-36 %), and captures
-  95 % of the perfect-foresight bound despite 12 % PV and 14 % load forecast error. Fixed YAML time windows get about
-  halfway (-1,227 and -1,292 PLN/yr) because they cannot tell a cloudy day from a negative-price day.
-- **G12w beats Dynamic SDAC + G12w by 427 PLN/yr even with the MILP.** Under Polish net-billing a G12w prosumer still
-  earns dynamic 15-minute RCE credits on exports while its winter imports stay capped at the two-zone tariff instead of
-  day-ahead spikes.
+- **Without control, the dynamic tariff costs 797 PLN/yr more than G12w.** The uncontrolled house exports 1.69
+  MWh/yr at RCE <= 0 for zero credit; none of the controlled strategies exports at RCE <= 0 (the surplus goes to the
+  battery, the heat pump, the EV or is curtailed).
+- **The noisy-forecast MILP saves 2,378 PLN/yr on Dynamic SDAC + G12w (37.4 %), 1,973
+  PLN/yr on G12w (35.5 %) and 820 PLN/yr on G11 (12.2 %)**, which is 96 %,
+  95 % and 89 % of the perfect-foresight saving. The forecast is synthetic (independent noise on
+  actual PV and load, see [Method](#prosumer-controllers)), so these shares are optimistic. The better of the two
+  fixed rules saves 1,347 / 1,223 / 126 PLN/yr on the same three tariffs.
+- **With the MILP, Dynamic SDAC + G12w still costs 391 PLN/yr more than G12w.** This ranking depends on the
+  illustrative G12w energy prices (720 / 430 PLN/MWh) and the 85 PLN/MWh dynamic margin assumed here.
 
 ![Dispatch on 1-3 May 2026](docs/img/dispatch_week.png)
 
-### 2. Commercial site on B23 and the PSE capacity fee
+### 2. Commercial site on B23 and the capacity fee
 
-50 kWp PV and 100 kWh / 50 kW battery on B23 with a 40 kW contracted power limit. On working days the PSE capacity fee
-(141.20 PLN/MWh across 07:00-21:59) is multiplied by $`A \in \{0.17, 0.50, 0.83, 1.00\}`$ depending on the ratio
-$`\Delta_S`$ of mean peak import to mean off-peak import (bands K1 to K4, thresholds 5 %, 10 % and 15 %).
+50 kWp PV and a 100 kWh / 50 kW battery on B23 with a 40 kW contracted power and a synthetic load (17.5 kW at night,
+34-46 kW on the day shift, independent 11 % noise per quarter-hour). On each working day the capacity fee for the
+energy drawn 07:00-21:59 is multiplied by $`A \in \{0.17, 0.50, 0.83, 1.00\}`$ according to the difference
+$`\Delta`$ between mean import in those hours and mean import in the other hours (K1 below 5 %, K2 below 10 %, K3
+below 15 %, K4 otherwise).
 
-| Operating mode | Energy + B23 [PLN] | Capacity fee [PLN] | Mean factor A | Working days in K1 | >40 kW penalty [PLN] | Battery wear [PLN] | Net total [PLN/yr] |
+| Operating mode | Energy + B23 [PLN] | Capacity fee [PLN] | Mean factor A | Working days in K1 | Quarter-hours above 40 kW | Battery wear [PLN] | Net total [PLN/yr] |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| PV only (no battery) | 130,394 | 10,820 | 0.85 | 21.4 % | 5,099 | 0 | 146,046 |
-| PV + 100 kWh battery (self-consumption) | 127,675 | 10,819 | 0.85 | 21.4 % | 5,099 | 545 | 144,111 |
-| PV + 100 kWh battery (MILP, forecast) | 127,086 | 3,127 | 0.30 | 87.3 % | 3,697 | 2,459 | 136,105 |
+| PV only | 130,054 | 14,518 | 0.82 | 22.2 % | 1,138 | 0 | 144,299 |
+| PV + battery, self-consumption | 127,299 | 14,496 | 0.82 | 22.6 % | 1,138 | 551 | 142,317 |
+| PV + battery, ratio rule | 124,964 | 3,852 | 0.25 | 88.5 % | 253 | 2,680 | 131,466 |
+| PV + battery, MILP perfect foresight | 109,305 | 2,710 | 0.18 | 98.4 % | 0 | 5,151 | 116,839 |
 
 ![C&I capacity fee](docs/img/ci_k_factor.png)
 
-- **Greedy self-consumption does not move the capacity fee** (10,819 vs 10,820 PLN/yr): the battery empties in the early
-  afternoon and leaves the late-afternoon working hours unbuffered.
-- **Shaping the peak/off-peak import ratio puts 87 % of working days into K1** ($`A = 0.17`$), cutting the capacity fee by
-  7,693 PLN/yr (-71 %) and total net site cost by 9,941 PLN/yr.
+- **Self-consumption does not move the capacity fee** (14,496 vs 14,518 PLN/yr): it never charges from the grid,
+  so night import stays at the base load and the peak/off-peak ratio barely changes.
+- **The causal ratio rule puts 88.5 % of working days in K1** and cuts the capacity fee by 10,666 PLN/yr
+  (-74 %) and the total by 12,833 PLN/yr. It has one tuning constant (the 4 % margin below
+  the K1 threshold) and reads only the import already measured that day.
+- **The perfect-foresight MILP is an upper bound**: 98.4 % of working days in K1 and 27,460 PLN/yr lower total
+  cost than PV only, of which 20,749 PLN/yr is energy and distribution and 11,808 PLN/yr capacity fee, against
+  5,151 PLN/yr more battery wear. Its import stays at or below 40 kW all year; the ratio rule exceeds 40 kW in 253
+  quarter-hours.
 
-### 3. Closed-loop Modbus TCP test and hardware watchdog
+### 3. Closed-loop Modbus TCP test and watchdog
 
-`src/hems_mpc/modbus_hil.py` runs a binary Modbus TCP server and client (7-byte MBAP header + PDU for function codes
-`0x03`, `0x06` and `0x10`) over `127.0.0.1` against a virtual inverter:
+`src/hems_mpc/modbus_hil.py` runs a Modbus TCP server and client (7-byte MBAP header + PDU for function codes `0x03`,
+`0x06` and `0x10`) over `127.0.0.1` against an emulated inverter. The register map is specific to this emulator:
 
 | Register | Type | R/W | Function | On watchdog timeout |
 |---|---|:-:|---|---|
 | `40001` | `uint16` | R/W | Control mode (`0` = self-consumption, `2` = forced EMS) | reverts to `0` |
 | `40002` | `int16` | R/W | Battery power command [W] (`+` charge, `-` discharge) | reverts to `0` |
-| `40003` | `uint16` | R/W | Grid export limit [W] (`0` when RCE ≤ 0) | reverts to `10000` |
-| `40004` | `uint16` | R/W | Heartbeat counter incremented every 15 min | monitored by inverter |
+| `40003` | `uint16` | R/W | Grid export limit [W] (`0` when RCE <= 0) | reverts to `10000` |
+| `40004` | `uint16` | R/W | Heartbeat counter incremented every 15 min | monitored by the emulator |
 | `40005` | `uint16` | R/W | Watchdog timeout [s] (default `900`) | - |
 | `40010`..`40016` | `uint16`/`int16` | R | SoC [0.1 %], PV [W], load [W], actual battery [W], grid [W], curtailed PV [W], watchdog flag | - |
 
 ![Modbus TCP trace](docs/img/modbus_hil_loop.png)
 
-In the 7-day test (672 quarter-hour socket transactions) the EMS stops writing between 12:00 and 12:45 on 1 May 2026:
-after 900 s without a heartbeat increment on `40004` the inverter sets `40016 = 1` and reverts to local
-self-consumption (`40001 = 0`), then resumes zero-export curtailment at 12:45 when writes return.
+The 7-day replay (672 quarter-hour socket transactions, Dynamic SDAC + G12w, noisy-forecast MILP) stops
+writing for 3 steps from 2026-05-01 12:00. The emulator checks the heartbeat once per quarter-hour and
+trips when more than 900 s have passed without a change, so the flag `40016 = 1` appears at 2026-05-01 12:15 and stays
+for 2 steps. In those two steps the emulator runs self-consumption with the export limit lifted and exports 7.4-7.9 kW
+at an RCE of -1,013 and -1,128 PLN/MWh (`results/modbus_hil_trace.csv`); zero-export curtailment resumes at 12:45 when
+writes return. A fallback that keeps the last export limit would avoid this.
 
-### 4. Home Assistant integration, inverter registers and fleet reserve
+### 4. Home Assistant export
 
-- **Home Assistant component** (`custom_components/pl_hems_mpc/` and `hacs.json`): exposes eight sensors and binary
-  sensors for RCE, import price, the 12-month FIFO deposit, the live C&I K-band, the battery set-point, the zero-export
-  relay, the heat-pump `SG Ready` state (`1:0` lock, `0:0` normal, `0:1` boost, `1:1` forced max) and the wallbox pilot
-  current (`0` or `6..16 A` for OCPP 1.6J).
-- **Inverter register profiles** (`src/hems_mpc/hardware_profiles.py`): holding register maps and Home Assistant YAML
-  templates for Deye `SUN-8/10/12K-SG04LP3-EU`, Huawei `SUN2000 + LUNA2000`, Sungrow `SH10RT + SBR096` and Victron
-  `MultiPlus-II + Cerbo GX`.
-- **Aggregated reserve** (`src/hems_mpc/vpp_fleet.py`): pooling 250 households (10 kWh / 5 kW each) and 15 C&I sites
-  (100 kWh / 50 kW each, 2.0 MW installed in total) yields an empirical P90 firm reserve of 1.18 MW upward and 1.29 MW
-  downward across the year, clearing a 1.0 MW minimum bid threshold.
+`src/hems_mpc/ha_bridge.py` writes MQTT discovery payloads for six entities (RCE price, battery set-point, export
+limit, zero-export guard, SG Ready state, EV current limit) to `results/mqtt_discovery.json`, a state message per
+quarter-hour derived from the dispatch to `results/ha_live_entities_24h.json`, and a `configuration.yaml` snippet for
+the emulator's register map to `results/ha_config_example.yaml`. This is an export of entity definitions, not an
+installable Home Assistant integration, and none of it has been tested against a running Home Assistant. The SG Ready
+state compares the planned heat-pump power with the steady-state need (above: store heat, well above at full power:
+forced, below: lock); the EV current limit is the planned power at three-phase 230 V, 0 A below 1.2 kW and otherwise
+6-16 A.
 
-![Home Assistant entities and fleet reserve](docs/img/ha_vpp_overview.png)
+![Home Assistant entity states](docs/img/ha_entities.png)
 
 ## Method
 
-### Net-billing FIFO ledger
+### Data
 
-Each month $`m`$ adds export credit
+15-minute RCE and SDAC prices for the Polish zone from the PSE reports API (`rce-pln`, `csdac-pln`) and ERA5 weather
+(Open-Meteo) for one grid point in central Poland (52.75 N, 18.25 E), cached in
+`data/pl_hems_inputs_2025_2026.parquet`. The PV array (35 deg tilt, south) sits at the same point. Household base load,
+heating season, internal gains, EV plug-in times and trip energy, and the C&I load are synthetic shapes with seeded
+noise (`physics.generate_household_profiles`, `controllers.simulate_ci_site`).
+
+### Net-billing deposit
+
+All amounts are net of VAT. Each month $`m`$ adds the export credit
 
 ```math
 D_m = \sum_{t \in m} E^{\mathrm{exp}}_t \cdot \max\bigl(0,\, p^{\mathrm{RCE}}_t\bigr)
 ```
 
-to a 12-month queue. Monthly active-energy import cost $`\sum_{t \in m} E^{\mathrm{imp}}_t p^{\mathrm{buy}}_t`$ draws from
-the oldest positive bucket first; distribution charges are paid in cash. Any credit still unused 12 months after it was
-earned is settled at $`\min(\text{unused},\, 0.20\, D_m)`$, and the remaining 80 % expires.
+to a FIFO queue; it becomes usable in the following month and stays usable for 12 months. Monthly active-energy cost
+$`\sum_{t \in m} E^{\mathrm{imp}}_t p^{\mathrm{buy}}_t`$ draws on the oldest credit first; distribution charges are
+paid in cash. Credit unused after 12 months is refunded up to $`0.30\, D_m`$ and the rest expires. Credit still open on
+30 September 2026 is settled the same way, which is conservative because in reality it would cover later imports. The
+amendment of the RES Act multiplies the deposit by 1.23, which matches the 23 % VAT on household bills; dividing both
+sides by 1.23 gives the net-of-VAT form above (this reading is to be verified).
 
-### Thermal and battery model
+### Heat demand and slab heat store
 
-The building and floor slab follow a 2-node RC balance updated every $`\Delta t = 0.25\text{ h}`$:
+There is no RC model of the building. Heat demand is steady-state,
+$`Q_t = \max\bigl(0,\, UA\,(T_{\mathrm{set}} - T_{\mathrm{out},t}) - Q_{\mathrm{sun},t} - Q_{\mathrm{int},t}\bigr) + Q_{\mathrm{DHW}}`$
+during the heating season, with $`UA = 0.165`$ kW/K, $`T_{\mathrm{set}} = 21.3`$ °C and a flat 0.12 kW of hot water.
+The rule-based strategies meet $`Q_t`$ directly (the time-window rules add a simple pre-heat buffer). The MILP adds one
+storage state, heat held in the floor slab relative to nominal,
 
 ```math
-C_{\mathrm{in}} \frac{dT_{\mathrm{in}}}{dt} = \frac{T_{\mathrm{slab}} - T_{\mathrm{in}}}{R_{\mathrm{is}}}
-  + \frac{T_{\mathrm{out}} - T_{\mathrm{in}}}{R_{\mathrm{io}}} + Q_{\mathrm{int}}, \qquad
-C_{\mathrm{slab}} \frac{dT_{\mathrm{slab}}}{dt} = \mathrm{COP}(T_{\mathrm{out}})\, P_{\mathrm{hp}}
-  - \frac{T_{\mathrm{slab}} - T_{\mathrm{in}}}{R_{\mathrm{is}}}.
+e_t = 0.985\, e_{t-1} + \Delta t \bigl(\mathrm{COP}(T_{\mathrm{out},t})\, P^{\mathrm{hp}}_t - Q_t\bigr),
+\qquad -1.5 \le e_t \le 9.5\ \mathrm{kWh_{th}}, \quad e_{T} \ge 0,
 ```
 
-At each 15-minute step the controller solves a 24-hour linear/mixed-integer program (`scipy.optimize.milp` / HiGHS) over
-grid import, grid export, PV curtailment, battery charge/discharge, heat-pump power and EV charging, with a cycle-wear
-cost on battery throughput and a peak-to-off-peak penalty for the C&I capacity-fee band.
+with $`\Delta t = 0.25`$ h and a COP curve that falls with outdoor temperature and dips around 0 °C for defrost.
+
+### Prosumer controllers
+
+- **Uncontrolled**: battery charges from PV surplus and covers any deficit, the heat pump follows demand, the EV
+  charges at 11 kW from 17:30 every day.
+- **Negative-price guard**: as above, plus zero export at RCE <= 0; before 10:30 the battery stays below 35 % while
+  RCE is above 80 PLN/MWh to leave room for midday surplus, and the EV charges only 22:00-06:00, from PV surplus or at
+  RCE <= 0.
+- **Fixed time-window rules**: night grid charging, pre-heating and EV charging in fixed windows with price thresholds.
+- **Daily MILP** (`controllers.solve_day_milp`, `scipy.optimize.milp` with HiGHS): one problem per local calendar day
+  (96 quarter-hours, 92 or 100 on clock-change days), solved at 00:00 over grid import, export, curtailment, battery
+  charge and discharge, heat-pump power, EV charging and the slab store. A binary per quarter-hour forbids importing
+  and exporting at the same time; export plus curtailment cannot exceed PV. Active energy and export credit are
+  weighted by 0.82 (deposit money can expire), discharge carries a wear cost of 160 PLN/MWh and the end-of-day battery
+  energy gets a terminal value. The EV must receive the day's trip energy.
+  - *Perfect foresight* executes the plan on actual data.
+  - *Noisy forecast* plans on actual PV and base load multiplied by independent $`\mathcal{N}(1, 0.12)`$ and
+    $`\mathcal{N}(1, 0.14)`$ factors per quarter-hour and on $`0.92 \cdot p^{\mathrm{SDAC}} + \mathcal{N}(0, 22)`$ as
+    the RCE forecast. Import prices, heat demand, COP and the EV schedule and energy are treated as known. A rule layer
+    then follows the planned battery power within actual limits, absorbs surplus and curtails when actual RCE <= 0.
+    Independent noise largely averages out within a day, so this is an optimistic stand-in for a real forecast.
+
+### C&I controllers
+
+- **Ratio rule** (causal, working days): charge from the grid 00:00-06:59 as fast as 40 kW allows; in 07:00-21:59
+  discharge so import stays at or below $`\min(40,\ 1.04\,\bar P_{00-07})`$, where $`\bar P_{00-07}`$ is the mean
+  import measured that morning; in 22:00-23:59 charge so import reaches $`\bar P_{00-07}`$. Free days run
+  self-consumption.
+- **MILP, perfect foresight** (`controllers.solve_ci_day_milp`): one problem per day over import, export, charge,
+  discharge (with a binary that forbids both at once), curtailment and SoC. On a working day four binaries $`z_k`$
+  choose the group and the peak energy is split into $`E_k \le M z_k`$; for $`k = 1, 2, 3`$
+
+```math
+\frac{1}{N_{\mathrm{pk}}}\sum_{t \in \mathrm{pk}} P^{\mathrm{imp}}_t
+  - (1 + \delta_k)\,\frac{1}{N_{\mathrm{off}}}\sum_{t \notin \mathrm{pk}} P^{\mathrm{imp}}_t \le M\,(1 - z_k),
+\qquad \delta_k \in \{0.05,\ 0.10,\ 0.15\},
+```
+
+  and the cost includes $`\sum_k A_k\, s\, E_k`$ with the day's fee rate $`s`$. Import above 40 kW is allowed only
+  up to the site load and carries a control weight of 10 PLN/kWh (not a tariff charge). The battery must end the day
+  with at least the energy it started with. Wear is 150 PLN/MWh discharged in all modes.
+
+The reported cost is energy + B23 distribution + capacity fee + wear - export revenue (at RCE, floored at zero).
+Contracted-power exceedance charges are not priced; the table reports the number of quarter-hours above 40 kW instead.
+
+## Regulatory assumptions (to be verified)
+
+The legal state changes often; each item below is this repository's reading, checked on 30 October 2026, and none is
+legal advice.
+
+- **Capacity fee rate**: 0.1412 PLN/kWh from 1 July to 31 December 2025 (URE Informacja nr 26/2025 of 30 May 2025)
+  and 0.2194 PLN/kWh for 2026 (URE Informacja nr 58/2025 of 30 October 2025), net, for consumers settled per energy
+  (art. 89a ust. 1 pkt 2 of the Capacity Market Act).
+- **Fee hours**: 15 hours from 07:00 to 21:59 on working days (Monday to Friday except public holidays) in every
+  quarter of 2025 and 2026 (URE Informacja nr 55/2024 and nr 57/2025).
+- **K-groups**: Art. 70a ust. 1-5 of the Capacity Market Act (consolidated text Dz. U. 2023 poz. 2131, as amended):
+  one-day qualification period, difference of mean consumption in the fee hours over the other hours of working days,
+  groups K1-K4 at 5 / 10 / 15 % with coefficients 0.17 / 0.50 / 0.83 / 1, K4 also when off-hour consumption is zero.
+- **Net-billing**: negative RCE counts as zero for an individual prosumer (art. 4b ust. 2 pkt 2), the deposit is usable
+  for 12 months from assignment and used oldest first (art. 4c ust. 5-7), refunds are capped (art. 4 ust. 11) of the
+  RES Act (consolidated text Dz. U. 2024 poz. 1361). The 30 % cap for RCE-settled prosumers and the 1.23 deposit
+  coefficient come from the amendment Dz. U. 2024 poz. 1847 as described in the Ministry of Climate's answer to
+  interpellation 10848 (23 July 2025); whether the cap applies to the credit with or without the 1.23 coefficient
+  was not verified.
+- **Not modelled**: contracted-power exceedance charges and fixed network charges (DSO tariff), the 15-minute versus
+  hourly balancing of a household meter, VAT on the C&I side, and capacity-market obligations.
 
 ## Reproduce
 
@@ -154,26 +243,27 @@ python -m venv .venv
 .venv/Scripts/python -m hems_mpc
 ```
 
-`python -m hems_mpc` writes the summary tables and Home Assistant artefacts to `results/`, the README charts to
-`docs/img/` and the dashboard data to `docs/data.js`.
+`python -m hems_mpc` (about 6 minutes) writes the summary tables and Home Assistant artefacts to `results/`,
+the README charts to `docs/img/` and the dashboard data to `docs/data.js`. Every number quoted in this README is in
+`results/summary.json` (`headline`) or follows from the CSV files in `results/`.
 
 ## Limitations
 
-- Single household and single C&I load profile; real savings depend on roof orientation, occupancy, heat-pump sizing and
-  EV driving hours.
-- The 12-month FIFO ledger starts with zero initial deposit on 1 October 2025 and runs for one billing year.
-- The C&I capacity-fee model uses the statutory K1-K4 thresholds and 2026 rate on a single meter; it does not model
-  DSO-specific reactive power penalties or multi-year capacity market obligations.
-- The fleet calculation pools uncorrelated forecast errors on a single bus without low-voltage feeder voltage or
-  transformer thermal constraints.
+- One synthetic household and one synthetic C&I load; real savings depend on roof orientation, occupancy, heat-pump
+  sizing and EV driving.
+- The forecast in the noisy-forecast MILP is synthetic and optimistic; there is no PV, load or price forecasting model.
+- Each day is optimised on its own (00:00 to 24:00) with a heuristic terminal value (house) or an energy-neutral end
+  (C&I); there is no intraday re-planning and no look-ahead beyond midnight.
+- The daily MILP sees the day's EV trip energy at 00:00, before the car arrives at 17:30.
+- The deposit ledger starts empty on 1 October 2025 and runs for one billing year.
+- Tariff rates are illustrative; the capacity-fee and net-billing rules are simplified (see above).
 
 ## Layout
 
 ```
-custom_components/pl_hems_mpc/   Home Assistant custom component (manifest, entities)
-data/                            cached 15-minute PSE prices (SDAC, RCE) and ERA5 weather
-docs/                            dashboard (index.html, data.js) and README figures (docs/img/)
-results/                         CSV/JSON summaries, generated Home Assistant YAML and MQTT payloads
-src/hems_mpc/                    tariffs, physics, controllers, modbus_hil, hardware_profiles, ha_bridge, vpp_fleet
-tests/                           unit and closed-loop Modbus TCP tests
+data/          cached 15-minute PSE prices (SDAC, RCE) and ERA5 weather
+docs/          dashboard (index.html, data.js) and README figures (docs/img/)
+results/       CSV/JSON summaries, Home Assistant export (MQTT discovery, state messages, YAML for the emulator)
+src/hems_mpc/  tariffs, physics, controllers, modbus_hil, ha_bridge, pipeline, cli
+tests/         property tests for tariffs, controllers, the Modbus TCP loop and output consistency
 ```

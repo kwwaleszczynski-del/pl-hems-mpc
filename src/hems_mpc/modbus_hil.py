@@ -1,11 +1,11 @@
-"""Hardware-in-the-Loop (HIL) Modbus TCP register server and client emulating a hybrid inverter.
+"""Software-in-the-loop test rig: a Modbus TCP server and client around an emulated hybrid inverter (no hardware).
 
 Implements the standard binary Modbus TCP framing (7-byte MBAP header + PDU) for:
   - Function Code 0x03: Read Holding Registers
   - Function Code 0x06: Write Single Holding Register
   - Function Code 0x10: Write Multiple Holding Registers
 
-Register map (modelled after Sungrow SH10RT / Huawei SUN2000 / SunSpec 123-124):
+Register map (project-specific; not a vendor or SunSpec map, so it must not be written to a real inverter):
   - 40001 (uint16): EMS Control Mode (0 = Local Self-Consumption, 2 = Forced Charge/Discharge)
   - 40002 (int16) : Forced Battery Power Command [W] (+charge, -discharge, signed two's complement)
   - 40003 (uint16): Export Power Limit [W] (Zero-Export when 0)
@@ -81,7 +81,7 @@ class VirtualHybridInverter:
         else:
             self._elapsed_since_hb_s += dt_s
 
-        # Hardware safety watchdog: if EMS heartbeat stalls beyond timeout, revert to local self-consumption
+        # Emulated watchdog: if the EMS heartbeat stalls beyond the timeout, revert to local self-consumption
         if self._elapsed_since_hb_s > self.registers[40005] and self.registers[40001] != 0:
             self.registers[40001] = 0
             self.registers[40002] = 0
@@ -159,7 +159,7 @@ def handle_modbus_pdu(inv: VirtualHybridInverter, unit_id: int, pdu: bytes) -> b
 
 
 class ModbusTCPServer:
-    """Lightweight threaded Modbus TCP server on localhost for Hardware-in-the-Loop testing."""
+    """Lightweight threaded Modbus TCP server on localhost for software-in-the-loop testing."""
 
     def __init__(self, inverter: VirtualHybridInverter, host: str = "127.0.0.1", port: int = 0) -> None:
         self.inverter = inverter

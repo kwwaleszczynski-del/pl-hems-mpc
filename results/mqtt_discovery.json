@@ -13,7 +13,7 @@
       ],
       "name": "PL-HEMS 15-min MILP Controller",
       "manufacturer": "open-source (pl-hems-mpc)",
-      "model": "MPC-MILP + SunSpec Modbus HIL",
+      "model": "Day MILP dispatch (simulation export)",
       "sw_version": "0.1.0"
     }
   },
@@ -30,7 +30,7 @@
       ],
       "name": "PL-HEMS 15-min MILP Controller",
       "manufacturer": "open-source (pl-hems-mpc)",
-      "model": "MPC-MILP + SunSpec Modbus HIL",
+      "model": "Day MILP dispatch (simulation export)",
       "sw_version": "0.1.0"
     }
   },
@@ -46,7 +46,7 @@
       ],
       "name": "PL-HEMS 15-min MILP Controller",
       "manufacturer": "open-source (pl-hems-mpc)",
-      "model": "MPC-MILP + SunSpec Modbus HIL",
+      "model": "Day MILP dispatch (simulation export)",
       "sw_version": "0.1.0"
     }
   },
@@ -61,7 +61,38 @@
       ],
       "name": "PL-HEMS 15-min MILP Controller",
       "manufacturer": "open-source (pl-hems-mpc)",
-      "model": "MPC-MILP + SunSpec Modbus HIL",
+      "model": "Day MILP dispatch (simulation export)",
+      "sw_version": "0.1.0"
+    }
+  },
+  "homeassistant/sensor/pl_hems_mpc/sg_ready_state/config": {
+    "name": "Heat Pump SG Ready State",
+    "unique_id": "pl_hems_mpc_sg_ready",
+    "state_topic": "hems/pl_hems_mpc/state",
+    "value_template": "{{ value_json.sg_ready }}",
+    "device": {
+      "identifiers": [
+        "pl_hems_mpc"
+      ],
+      "name": "PL-HEMS 15-min MILP Controller",
+      "manufacturer": "open-source (pl-hems-mpc)",
+      "model": "Day MILP dispatch (simulation export)",
+      "sw_version": "0.1.0"
+    }
+  },
+  "homeassistant/sensor/pl_hems_mpc/ev_current_limit/config": {
+    "name": "EV Charging Current Limit",
+    "unique_id": "pl_hems_mpc_ev_current_a",
+    "state_topic": "hems/pl_hems_mpc/state",
+    "value_template": "{{ value_json.ev_current_a }}",
+    "unit_of_measurement": "A",
+    "device": {
+      "identifiers": [
+        "pl_hems_mpc"
+      ],
+      "name": "PL-HEMS 15-min MILP Controller",
+      "manufacturer": "open-source (pl-hems-mpc)",
+      "model": "Day MILP dispatch (simulation export)",
       "sw_version": "0.1.0"
     }
   }
