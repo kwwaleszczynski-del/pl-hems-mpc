@@ -1,4 +1,4 @@
-# pl-hems-mpc
+# Home and C&I energy management on 15-minute Polish prices
 
 [![tests](https://github.com/kwwaleszczynski-del/pl-hems-mpc/actions/workflows/ci.yml/badge.svg)](https://github.com/kwwaleszczynski-del/pl-hems-mpc/actions/workflows/ci.yml)
 
@@ -10,17 +10,19 @@ site on B23 faces a second rule: on each working day the capacity fee (141.20 PL
 stays within 5 % of mean import in the other hours of the day (group K1 under Art. 70a of the Capacity Market Act).
 
 This repository simulates both cases at 15-minute resolution from 1 October 2025 to 30 September 2026 (35,040
-quarter-hours) on real PSE prices (SDAC and RCE) and ERA5 weather, with **synthetic** household and C&I loads. It
-compares rule-based controls with a mixed-integer program (MILP) solved once per day, replays the resulting set-points
-over a localhost Modbus TCP emulator with a watchdog, and exports the entity states as Home Assistant MQTT discovery
-payloads.
+quarter-hours, a window defined in UTC, see [Data](#data)) on real PSE prices (SDAC and RCE) and ERA5 weather, with
+**synthetic** household and C&I loads. It compares rule-based controls with a mixed-integer program (MILP) solved once
+per day, replays the resulting set-points over a localhost Modbus TCP emulator with a watchdog, and exports the entity
+states as Home Assistant MQTT discovery payloads.
 
 **Dashboard:** https://kwwaleszczynski-del.github.io/pl-hems-mpc/
 
-> Loads are synthetic and energy and distribution rates are illustrative round numbers, not a specific supplier's or
-> DSO's tariff. The net-billing and capacity-fee rules are simplified readings of the statutes; sources are listed in
-> [Regulatory assumptions](#regulatory-assumptions-to-be-verified) and every rule must be verified before real use. The
-> Modbus register map belongs to the emulator in this repository and must not be written to a real inverter.
+> Loads are synthetic. Energy prices and the household distribution rates are illustrative round numbers, not a
+> specific supplier's or DSO's tariff; the B23 per-MWh charges of the C&I site are those of one DSO's 2026 tariff,
+> applied to the whole window. The net-billing and capacity-fee rules are simplified readings of the statutes;
+> sources are listed in [Regulatory assumptions](#regulatory-assumptions-to-be-verified) and every rule must be
+> verified before real use. The Modbus register map belongs to the emulator in this repository and must not be
+> written to a real inverter.
 
 ## Key results
 
@@ -73,21 +75,21 @@ below 15 %, K4 otherwise).
 
 | Operating mode | Energy + B23 [PLN] | Capacity fee [PLN] | Mean factor A | Working days in K1 | Quarter-hours above 40 kW | Battery wear [PLN] | Net total [PLN/yr] |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| PV only | 130,054 | 14,518 | 0.82 | 22.2 % | 1,138 | 0 | 144,299 |
-| PV + battery, self-consumption | 127,299 | 14,496 | 0.82 | 22.6 % | 1,138 | 551 | 142,317 |
-| PV + battery, ratio rule | 124,964 | 3,852 | 0.25 | 88.5 % | 253 | 2,680 | 131,466 |
-| PV + battery, MILP perfect foresight | 109,305 | 2,710 | 0.18 | 98.4 % | 0 | 5,151 | 116,839 |
+| PV only | 119,359 | 14,518 | 0.82 | 22.2 % | 1,138 | 0 | 133,603 |
+| PV + battery, self-consumption | 116,594 | 14,496 | 0.82 | 22.6 % | 1,138 | 551 | 131,612 |
+| PV + battery, ratio rule | 115,651 | 3,852 | 0.25 | 88.5 % | 253 | 2,680 | 122,153 |
+| PV + battery, MILP perfect foresight | 102,946 | 2,832 | 0.18 | 98.4 % | 0 | 4,608 | 109,988 |
 
 ![C&I capacity fee](docs/img/ci_k_factor.png)
 
 - **Self-consumption does not move the capacity fee** (14,496 vs 14,518 PLN/yr): it never charges from the grid,
   so night import stays at the base load and the peak/off-peak ratio barely changes.
 - **The causal ratio rule puts 88.5 % of working days in K1** and cuts the capacity fee by 10,666 PLN/yr
-  (-74 %) and the total by 12,833 PLN/yr. It has one tuning constant (the 4 % margin below
+  (-74 %) and the total by 11,450 PLN/yr. It has one tuning constant (the 4 % margin below
   the K1 threshold) and reads only the import already measured that day.
-- **The perfect-foresight MILP is an upper bound**: 98.4 % of working days in K1 and 27,460 PLN/yr lower total
-  cost than PV only, of which 20,749 PLN/yr is energy and distribution and 11,808 PLN/yr capacity fee, against
-  5,151 PLN/yr more battery wear. Its import stays at or below 40 kW all year; the ratio rule exceeds 40 kW in 253
+- **The perfect-foresight MILP is an upper bound**: 98.4 % of working days in K1 and 23,615 PLN/yr lower total
+  cost than PV only, of which 16,413 PLN/yr is energy and distribution and 11,686 PLN/yr capacity fee, against
+  4,608 PLN/yr more battery wear. Its import stays at or below 40 kW all year; the ratio rule exceeds 40 kW in 253
   quarter-hours.
 
 ### 3. Closed-loop Modbus TCP test and watchdog
@@ -134,7 +136,14 @@ forced, below: lock); the EV current limit is the planned power at three-phase 2
 (Open-Meteo) for one grid point in central Poland (52.75 N, 18.25 E), cached in
 `data/pl_hems_inputs_2025_2026.parquet`. The PV array (35 deg tilt, south) sits at the same point. Household base load,
 heating season, internal gains, EV plug-in times and trip energy, and the C&I load are synthetic shapes with seeded
-noise (`physics.generate_household_profiles`, `controllers.simulate_ci_site`).
+noise (`physics.generate_household_profiles`, `controllers.simulate_ci_site`). Sources and terms of use are in
+[Data and licenses](#data-and-licenses).
+
+The simulated window is defined in UTC: 2025-10-01 00:00 to 2026-09-30 23:45 UTC, which is 02:00 on 1 October 2025
+to 01:45 on 1 October 2026 in Polish time (CEST, UTC+2). Tariff zones, capacity-fee hours, working days, billing
+months and the daily optimisation all use local time (Europe/Warsaw), so the first local day lacks its first two hours,
+and the run ends with the first two night hours of 1 October 2026 (no fee hours; a two-hour 13th month in the deposit
+ledger). Both clock changes fall inside the window, so it still has 35,040 quarter-hours.
 
 ### Net-billing deposit
 
@@ -229,6 +238,16 @@ legal advice.
   coefficient come from the amendment Dz. U. 2024 poz. 1847 as described in the Ministry of Climate's answer to
   interpellation 10848 (23 July 2025); whether the cap applies to the credit with or without the 1.23 coefficient
   was not verified.
+- **B23 charges** (checked on 31 October 2026): the per-MWh charges of the C&I site are those of the
+  [TAURON Dystrybucja S.A. tariff for 2026](https://www.tauron-dystrybucja.pl/-/media/offer-documents/dystrybucja/aktualna-taryfa/taryfa-tauron-dystrybucja-2026_ocr.ashx),
+  approved by URE decision DRE.WRE.4211.54.8.2025.ASa1 of 17 December 2025: the variable network rate of group B23
+  (table 7.1: 49.64 / 56.10 / 37.48 PLN/MWh in the morning peak, evening peak and other hours), the quality rate
+  (33.16 PLN/MWh from 1 February 2026 after the PSE tariff change DRE.WPR.4211.1.4.2026.BTS; 33.06 PLN/MWh in
+  January), the OZE fee (7.30 PLN/MWh, URE Informacja nr 61/2025) and the cogeneration fee (3.00 PLN/MWh, Dz. U.
+  2025 poz. 1759), in total 93.10 / 99.56 / 80.94 PLN/MWh net. The zones are the tariff's: morning peak 07:00-12:59,
+  evening peak 16:00-20:59 (October-March) or 19:00-21:59 (April-September), all other hours, weekends and public
+  holidays in the third zone. The 2026 rates are applied to the whole window, although October-December 2025 fell
+  under the 2025 tariff. Other DSOs' B23 rates differ.
 - **Not modelled**: contracted-power exceedance charges and fixed network charges (DSO tariff), the 15-minute versus
   hourly balancing of a household meter, VAT on the C&I side, and capacity-market obligations.
 
@@ -256,7 +275,8 @@ the README charts to `docs/img/` and the dashboard data to `docs/data.js`. Every
   (C&I); there is no intraday re-planning and no look-ahead beyond midnight.
 - The daily MILP sees the day's EV trip energy at 00:00, before the car arrives at 17:30.
 - The deposit ledger starts empty on 1 October 2025 and runs for one billing year.
-- Tariff rates are illustrative; the capacity-fee and net-billing rules are simplified (see above).
+- Household energy and distribution rates are illustrative; the B23 charges are one DSO's 2026 rates applied to the
+  whole window; the capacity-fee and net-billing rules are simplified (see above).
 
 ## Layout
 
@@ -267,3 +287,33 @@ results/       CSV/JSON summaries, Home Assistant export (MQTT discovery, state 
 src/hems_mpc/  tariffs, physics, controllers, modbus_hil, ha_bridge, pipeline, cli
 tests/         property tests for tariffs, controllers, the Modbus TCP loop and output consistency
 ```
+
+## Data and licenses
+
+Code: MIT (see `LICENSE`). The input file `data/pl_hems_inputs_2025_2026.parquet` contains third-party data that keep
+their sources' terms below; the MIT license does not cover them. Results in `results/` and `docs/` are derived from
+these data and carry the same attributions.
+
+- **Prices**: 15-minute RCE (*rynkowa cena energii*) and SDAC prices for the Polish zone, PSE S.A. reports API
+  ([raporty.pse.pl](https://raporty.pse.pl), reports `rce-pln` and `csdac-pln`), downloaded on 21 October 2026.
+  **Terms of use.** PSE publishes conditions for re-using public sector information
+  ([www.pse.pl, BIP, "Ponowne wykorzystywanie informacji sektora publicznego"](https://www.pse.pl/bip/ponowne-wykorzystanie-informacji-publicznej),
+  checked on 31 October 2026). They allow commercial and non-commercial re-use of information published on
+  www.pse.pl free of charge, on condition that the user names the source and the date the information was obtained,
+  removes the PSE logo, and, when the information has been processed, tells recipients that it was changed and how,
+  without misleading them. PSE accepts no liability for processed information and notes that some materials may be
+  protected by copyright or database rights. These conditions are written for www.pse.pl; this project applies them
+  to the reports API of the same operator. Attribution as required:
+
+  > Information obtained from www.pse.pl (PSE S.A. reports `rce-pln`, `csdac-pln`), state as of 21 October 2026.
+  > The information has been processed: cut to 1 October 2025 - 30 September 2026 (UTC), stored as 32-bit floats,
+  > combined with weather data in one file and used in models. It is not an official PSE publication.
+
+- **Weather**: ERA5 hourly reanalysis (Hersbach et al., 2020, [doi:10.1002/qj.3803](https://doi.org/10.1002/qj.3803);
+  Copernicus Climate Change Service, ECMWF) for 52.75 N, 18.25 E via the
+  [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api), downloaded on
+  21 October 2026, licensed **CC BY 4.0**; interpolated from hourly to 15-minute values. Contains modified Copernicus
+  Climate Change Service information; neither the European Commission nor ECMWF is responsible for any use of it.
+- **B23 tariff**: rates quoted from the public TAURON Dystrybucja S.A. tariff for 2026 (see
+  [Regulatory assumptions](#regulatory-assumptions-to-be-verified)); the tariff document is not part of this
+  repository.

@@ -1,8 +1,9 @@
 """Polish retail & C&I electricity tariffs, net-billing deposit rules, and PSE capacity fee (K-factor).
 
-Energy and distribution rates in `TariffSpec` are illustrative round numbers, not a specific supplier's or DSO's
-2025/2026 tariff. Statutory rules carry a source in the docstrings; the legal state changes often, so every
-rule here is a simplification to be verified against the current act before any real use.
+Energy rates and the household (G) distribution rates in `TariffSpec` are illustrative round numbers, not a specific
+supplier's or DSO's 2025/2026 tariff; the B23 variable charges come from one DSO's 2026 tariff. Statutory rules
+carry a source in the docstrings; the legal state changes often, so every rule here is a simplification to be
+verified against the current act before any real use.
 """
 
 from __future__ import annotations
@@ -70,10 +71,13 @@ class TariffSpec:
     dist_flat_pln_mwh: float = 295.0
     dist_peak_pln_mwh: float = 345.0
     dist_offpeak_pln_mwh: float = 95.0
-    # B23 three-zone distribution (morning peak, evening peak, rest)
-    dist_b23_morning_pln_mwh: float = 240.0
-    dist_b23_evening_pln_mwh: float = 330.0
-    dist_b23_offpeak_pln_mwh: float = 78.0
+    # B23 three-zone variable charges (morning peak, evening peak, rest): TAURON Dystrybucja tariff for 2026 (URE
+    # decision DRE.WRE.4211.54.8.2025.ASa1 of 17 Dec 2025), network rate 49.64 / 56.10 / 37.48 (table 7.1) + quality
+    # rate 33.16 (from 1 Feb 2026) + OZE fee 7.30 + cogeneration fee 3.00, all PLN/MWh net. Applied to the whole
+    # simulated window, including Oct-Dec 2025. To be verified.
+    dist_b23_morning_pln_mwh: float = 93.10
+    dist_b23_evening_pln_mwh: float = 99.56
+    dist_b23_offpeak_pln_mwh: float = 80.94
     # Capacity fee (opłata mocowa) for non-household consumers, net PLN/MWh drawn in 07:00-21:59 on working days:
     # 0.1412 PLN/kWh for 1 Jul - 31 Dec 2025 (URE Informacja nr 26/2025 of 30 May 2025) and 0.2194 PLN/kWh for
     # 2026 (URE Informacja nr 58/2025 of 30 Oct 2025); hours per URE Informacja nr 57/2025. To be verified.
@@ -237,7 +241,7 @@ def settle_prosumer_net_billing(
         if exp_credit > 0:
             buckets.append([float(m_idx + 1), exp_credit, exp_credit])
 
-    # Settle any remaining deposit at the end of the horizon with the same 20% refund cap
+    # Settle any remaining deposit at the end of the horizon with the same refund cap (30 % by default)
     remaining_end = sum(b[2] for b in buckets)
     refundable_end = sum(min(b[2], refund_cap_share * b[1]) for b in buckets)
     forfeited_end = max(0.0, remaining_end - refundable_end)

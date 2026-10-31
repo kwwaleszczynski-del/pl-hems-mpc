@@ -82,10 +82,11 @@ other hours (group K1). This project compares simple rules with a mixed-integer 
 first full year of 15-minute prices (October 2025 to September 2026), runs the schedule against a localhost Modbus TCP
 inverter emulator with a watchdog, and exports the resulting entity states for Home Assistant. Code and method:
 <a href="https://github.com/kwwaleszczynski-del/pl-hems-mpc">github.com/kwwaleszczynski-del/pl-hems-mpc</a>.</p>
-<p class="warn">Household and C&amp;I loads are synthetic. Energy and distribution rates are illustrative round numbers,
-and the net-billing and capacity-fee rules are simplified readings of the statutes (sources in the README) that must be
-verified before any real use. The Modbus register map belongs to the emulator only and must not be written to a real
-inverter.</p>
+<p class="warn">Household and C&amp;I loads are synthetic. Energy prices and household distribution rates are
+illustrative round numbers; the B23 per-MWh charges are those of the TAURON Dystrybucja 2026 tariff, applied to the
+whole window. The net-billing and capacity-fee rules are simplified readings of the statutes (sources in the README)
+that must be verified before any real use. The Modbus register map belongs to the emulator only and must not be
+written to a real inverter.</p>
 
 <div class="tiles" id="tiles"></div>
 
@@ -164,9 +165,14 @@ slider to step through the 96 quarter-hours of 1 May 2026.</p>
   <pre id="yamlBox"></pre>
 </div>
 
-<p class="note" style="margin-top:28px">Data: PSE S.A. reports API (15-minute RCE and SDAC prices, October 2025 -
-September 2026), ERA5 reanalysis (Copernicus, via Open-Meteo) for one grid point in central Poland. Household and C&amp;I
-loads are synthetic. Independent analytical project, not affiliated with PSE S.A. or any inverter manufacturer.</p>
+<p class="note" style="margin-top:28px">Data: information obtained from www.pse.pl (PSE S.A. reports
+<code>rce-pln</code>, <code>csdac-pln</code>: 15-minute RCE and SDAC prices, October 2025 - September 2026, UTC), state
+as of 21 October 2026, processed (cut to the window and used in models; not an official PSE publication). ERA5
+reanalysis (Copernicus Climate Change Service, ECMWF) via Open-Meteo, CC BY 4.0, for one grid point in central Poland;
+contains modified Copernicus Climate Change Service information, and neither the European Commission nor ECMWF is
+responsible for any use of it. Code MIT; data keep their sources' terms (see the README). Household and C&amp;I loads
+are synthetic. Independent analytical project, not affiliated with PSE S.A., TAURON Dystrybucja S.A. or any inverter
+manufacturer.</p>
 </main>
 
 <script>
