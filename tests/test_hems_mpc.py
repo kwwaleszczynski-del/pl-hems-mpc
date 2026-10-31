@@ -34,7 +34,7 @@ REPO = Path(__file__).resolve().parents[1]
 
 def _working_day(day: str) -> tuple[pd.DatetimeIndex, pd.DataFrame]:
     ts = pd.date_range(f"{day} 00:00", periods=96, freq="15min", tz="Europe/Warsaw").tz_convert("UTC")
-    df_p = build_price_frame(ts, np.full(96, 400.0), np.full(96, 350.0), TariffSpec("B23", "CI_B23_DYNAMIC"))
+    df_p = build_price_frame(ts, np.full(96, 400.0), np.full(96, 350.0), TariffSpec("C23", "CI_C23_DYNAMIC"))
     return ts, df_p
 
 
@@ -62,12 +62,12 @@ def test_net_billing_deposit_rules() -> None:
 def test_capacity_fee_rate_and_window() -> None:
     """The fee applies 07:00-21:59 on working days at the 2025 or 2026 rate, never on holidays."""
     ts = pd.date_range("2025-12-31 00:00", "2026-01-02 23:45", freq="15min", tz="Europe/Warsaw").tz_convert("UTC")
-    df_p = build_price_frame(ts, np.full(len(ts), 400.0), np.full(len(ts), 350.0), TariffSpec("B23", "CI_B23_DYNAMIC"))
+    df_p = build_price_frame(ts, np.full(len(ts), 400.0), np.full(len(ts), 350.0), TariffSpec("C23", "CI_C23_DYNAMIC"))
     loc = df_p["ts_local"]
     hour = loc.dt.hour
     rate = df_p["cap_fee_base_pln_mwh"]
     in_win = (hour >= 7) & (hour < 22)
-    spec = TariffSpec("B23", "CI_B23_DYNAMIC")
+    spec = TariffSpec("C23", "CI_C23_DYNAMIC")
     assert set(rate[(loc.dt.day == 31) & in_win]) == {spec.capacity_fee_2025_pln_mwh}
     assert set(rate[(loc.dt.day == 2) & in_win]) == {spec.capacity_fee_2026_pln_mwh}
     assert (rate[loc.dt.day == 1] == 0.0).all()  # 1 January is a public holiday
@@ -162,7 +162,7 @@ def test_ci_milp_band_matches_settlement() -> None:
     assert k["k_days"][sol["band"]] == 1
     assert sol["band"] in {label for _, _, label in K_BANDS}
     assert np.minimum(sol["p_ch_kw"], sol["p_dis_kw"]).max() < 1e-6
-    assert np.all(sol["p_imp_kw"] <= np.maximum(40.0, load) + 1e-6)
+    assert np.all(sol["p_imp_kw"] <= np.maximum(60.0, load) + 1e-6)
     assert sol["soc_kwh"][-1] >= 50.0 - 1e-6
     net = sol["p_imp_kw"] - sol["p_exp_kw"] - sol["p_ch_kw"] + sol["p_dis_kw"] - sol["p_curt_kw"]
     np.testing.assert_allclose(net, load - pv, atol=1e-5)
@@ -257,7 +257,7 @@ def test_published_outputs_agree() -> None:
     pros = pd.read_csv(REPO / "results" / "prosumer_summary.csv")
     for _, row in pros.iterrows():
         assert f"{row['total_economic_cost_pln']:,.0f}" in readme
-    ci = pd.read_csv(REPO / "results" / "ci_b23_summary.csv", index_col="mode")
+    ci = pd.read_csv(REPO / "results" / "ci_c23_summary.csv", index_col="mode")
     for mode, row in ci.iterrows():
         assert f"{row['annual_total_net_cost_pln']:,.0f}" in readme
         assert summary["ci_summary"][mode]["annual_total_net_cost_pln"] == row["annual_total_net_cost_pln"]

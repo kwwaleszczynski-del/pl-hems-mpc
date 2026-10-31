@@ -1,5 +1,0 @@
-mode,annual_energy_dist_pln,annual_capacity_fee_pln,annual_capacity_fee_unmodulated_pln,effective_k_mult,k1_days_share_pct,max_import_kw,quarters_above_limit_per_yr,annual_export_rev_pln,annual_deg_cost_pln,annual_total_net_cost_pln,days_K1,days_K2,days_K3,days_K4
-no_bess,119359.0,14518.0,17592.0,0.825,22.2,55.3,1138.0,273.0,0.0,133603.0,56,18,13,165
-self_consumption,116594.0,14496.0,17583.0,0.824,22.6,55.3,1138.0,29.0,551.0,131612.0,57,17,13,165
-ratio_rule,115651.0,3852.0,15415.0,0.25,88.5,54.1,253.0,30.0,2680.0,122153.0,223,10,7,12
-milp_oracle,102946.0,2832.0,16100.0,0.176,98.4,40.0,0.0,398.0,4608.0,109988.0,248,4,0,0

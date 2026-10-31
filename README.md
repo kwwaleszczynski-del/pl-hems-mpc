@@ -5,9 +5,10 @@
 A Polish house with rooftop PV, a battery, a heat pump and an EV charger sits under two price signals at once: its
 exports are credited to a 12-month FIFO deposit at the 15-minute market price RCE (zero when RCE is negative), and its
 imports pay a flat (G11), two-zone (G12w) or dynamic day-ahead tariff plus distribution fees paid in cash. A commercial
-site on B23 faces a second rule: on each working day the capacity fee (141.20 PLN/MWh in the second half of 2025,
-219.40 PLN/MWh in 2026, charged on energy drawn 07:00-21:59) is multiplied by 0.17 when mean import in those hours
-stays within 5 % of mean import in the other hours of the day (group K1 under Art. 70a of the Capacity Market Act).
+low-voltage site on C23 faces a second rule: on each working day the capacity fee (141.20 PLN/MWh in the second half
+of 2025, 219.40 PLN/MWh in 2026, charged on energy drawn 07:00-21:59) is multiplied by 0.17 when mean import in those
+hours stays within 5 % of mean import in the other hours of the day (group K1 under Art. 70a of the Capacity Market
+Act).
 
 This repository simulates both cases at 15-minute resolution from 1 October 2025 to 30 September 2026 (35,040
 quarter-hours, a window defined in UTC, see [Data](#data)) on real PSE prices (SDAC and RCE) and ERA5 weather, with
@@ -18,7 +19,7 @@ states as Home Assistant MQTT discovery payloads.
 **Dashboard:** https://kwwaleszczynski-del.github.io/pl-hems-mpc/
 
 > Loads are synthetic. Energy prices and the household distribution rates are illustrative round numbers, not a
-> specific supplier's or DSO's tariff; the B23 per-MWh charges of the C&I site are those of one DSO's 2026 tariff,
+> specific supplier's or DSO's tariff; the C23 per-MWh charges of the C&I site are those of one DSO's 2026 tariff,
 > applied to the whole window. The net-billing and capacity-fee rules are simplified readings of the statutes;
 > sources are listed in [Regulatory assumptions](#regulatory-assumptions-to-be-verified) and every rule must be
 > verified before real use. The Modbus register map belongs to the emulator in this repository and must not be
@@ -65,32 +66,34 @@ quarter-hours), down to -1,457.6 PLN/MWh at 2026-05-01 14:15.
 
 ![Dispatch on 1-3 May 2026](docs/img/dispatch_week.png)
 
-### 2. Commercial site on B23 and the capacity fee
+### 2. Commercial site on C23 and the capacity fee
 
-50 kWp PV and a 100 kWh / 50 kW battery on B23 with a 40 kW contracted power and a synthetic load (17.5 kW at night,
-34-46 kW on the day shift, independent 11 % noise per quarter-hour). On each working day the capacity fee for the
+50 kWp PV and a 100 kWh / 50 kW battery on a low-voltage connection with a synthetic load (17.5 kW at night,
+34-46 kW on the day shift, independent 11 % noise per quarter-hour, at most 56 kW). The contracted power is 60 kW,
+the round value above that peak, so the site falls in group C2x (low voltage, more than 40 kW); it is billed on the
+three-zone C23. On each working day the capacity fee for the
 energy drawn 07:00-21:59 is multiplied by $`A \in \{0.17, 0.50, 0.83, 1.00\}`$ according to the difference
 $`\Delta`$ between mean import in those hours and mean import in the other hours (K1 below 5 %, K2 below 10 %, K3
 below 15 %, K4 otherwise).
 
-| Operating mode | Energy + B23 [PLN] | Capacity fee [PLN] | Mean factor A | Working days in K1 | Quarter-hours above 40 kW | Battery wear [PLN] | Net total [PLN/yr] |
+| Operating mode | Energy + C23 [PLN] | Capacity fee [PLN] | Mean factor A | Working days in K1 | Quarter-hours above 60 kW | Battery wear [PLN] | Net total [PLN/yr] |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| PV only | 119,359 | 14,518 | 0.82 | 22.2 % | 1,138 | 0 | 133,603 |
-| PV + battery, self-consumption | 116,594 | 14,496 | 0.82 | 22.6 % | 1,138 | 551 | 131,612 |
-| PV + battery, ratio rule | 115,651 | 3,852 | 0.25 | 88.5 % | 253 | 2,680 | 122,153 |
-| PV + battery, MILP perfect foresight | 102,946 | 2,832 | 0.18 | 98.4 % | 0 | 4,608 | 109,988 |
+| PV only | 148,598 | 14,518 | 0.82 | 22.2 % | 0 | 0 | 162,842 |
+| PV + battery, self-consumption | 145,317 | 14,496 | 0.82 | 22.6 % | 0 | 551 | 160,334 |
+| PV + battery, ratio rule | 144,091 | 3,852 | 0.25 | 88.5 % | 0 | 2,680 | 150,593 |
+| PV + battery, MILP perfect foresight | 129,239 | 2,649 | 0.17 | 100.0 % | 0 | 5,531 | 137,235 |
 
 ![C&I capacity fee](docs/img/ci_k_factor.png)
 
 - **Self-consumption does not move the capacity fee** (14,496 vs 14,518 PLN/yr): it never charges from the grid,
   so night import stays at the base load and the peak/off-peak ratio barely changes.
 - **The causal ratio rule puts 88.5 % of working days in K1** and cuts the capacity fee by 10,666 PLN/yr
-  (-74 %) and the total by 11,450 PLN/yr. It has one tuning constant (the 4 % margin below
+  (-74 %) and the total by 12,249 PLN/yr. It has one tuning constant (the 4 % margin below
   the K1 threshold) and reads only the import already measured that day.
-- **The perfect-foresight MILP is an upper bound**: 98.4 % of working days in K1 and 23,615 PLN/yr lower total
-  cost than PV only, of which 16,413 PLN/yr is energy and distribution and 11,686 PLN/yr capacity fee, against
-  4,608 PLN/yr more battery wear. Its import stays at or below 40 kW all year; the ratio rule exceeds 40 kW in 253
-  quarter-hours.
+- **The perfect-foresight MILP is an upper bound**: every working day in K1 and 25,607 PLN/yr lower total cost than
+  PV only, of which 19,359 PLN/yr is energy and distribution and 11,869 PLN/yr capacity fee, against 5,531 PLN/yr
+  more battery wear. No mode exceeds the 60 kW contracted power: PV only peaks at 55.3 kW, and both battery
+  strategies reach 60 kW when they charge from the grid at night.
 
 ### 3. Closed-loop Modbus TCP test and watchdog
 
@@ -198,10 +201,10 @@ with $`\Delta t = 0.25`$ h and a COP curve that falls with outdoor temperature a
 
 ### C&I controllers
 
-- **Ratio rule** (causal, working days): charge from the grid 00:00-06:59 as fast as 40 kW allows; in 07:00-21:59
-  discharge so import stays at or below $`\min(40,\ 1.04\,\bar P_{00-07})`$, where $`\bar P_{00-07}`$ is the mean
-  import measured that morning; in 22:00-23:59 charge so import reaches $`\bar P_{00-07}`$. Free days run
-  self-consumption.
+- **Ratio rule** (causal, working days): charge from the grid 00:00-06:59 as fast as the 60 kW contracted power
+  allows; in 07:00-21:59 discharge so import stays at or below $`\min(60,\ 1.04\,\bar P_{00-07})`$, where
+  $`\bar P_{00-07}`$ is the mean import measured that morning; in 22:00-23:59 charge so import reaches
+  $`\bar P_{00-07}`$. Free days run self-consumption.
 - **MILP, perfect foresight** (`controllers.solve_ci_day_milp`): one problem per day over import, export, charge,
   discharge (with a binary that forbids both at once), curtailment and SoC. On a working day four binaries $`z_k`$
   choose the group and the peak energy is split into $`E_k \le M z_k`$; for $`k = 1, 2, 3`$
@@ -212,12 +215,13 @@ with $`\Delta t = 0.25`$ h and a COP curve that falls with outdoor temperature a
 \qquad \delta_k \in \{0.05,\ 0.10,\ 0.15\},
 ```
 
-  and the cost includes $`\sum_k A_k\, s\, E_k`$ with the day's fee rate $`s`$. Import above 40 kW is allowed only
+  and the cost includes $`\sum_k A_k\, s\, E_k`$ with the day's fee rate $`s`$. Import above 60 kW is allowed only
   up to the site load and carries a control weight of 10 PLN/kWh (not a tariff charge). The battery must end the day
   with at least the energy it started with. Wear is 150 PLN/MWh discharged in all modes.
 
-The reported cost is energy + B23 distribution + capacity fee + wear - export revenue (at RCE, floored at zero).
-Contracted-power exceedance charges are not priced; the table reports the number of quarter-hours above 40 kW instead.
+The reported cost is energy + C23 variable distribution charges + capacity fee + wear - export revenue (at RCE,
+floored at zero). Contracted-power exceedance charges are not priced; the table reports the number of quarter-hours
+above 60 kW instead.
 
 ## Regulatory assumptions (to be verified)
 
@@ -226,7 +230,9 @@ legal advice.
 
 - **Capacity fee rate**: 0.1412 PLN/kWh from 1 July to 31 December 2025 (URE Informacja nr 26/2025 of 30 May 2025)
   and 0.2194 PLN/kWh for 2026 (URE Informacja nr 58/2025 of 30 October 2025), net, for consumers settled per energy
-  (art. 89a ust. 1 pkt 2 of the Capacity Market Act).
+  (art. 89a ust. 1 pkt 2 of the Capacity Market Act). Until the end of 2027 households and other low-voltage sites
+  with at most 16 kW contracted power pay a monthly flat rate instead (art. 89a ust. 1 pkt 1 and ust. 2), so the
+  60 kW low-voltage site is settled per energy, with the K-groups.
 - **Fee hours**: 15 hours from 07:00 to 21:59 on working days (Monday to Friday except public holidays) in every
   quarter of 2025 and 2026 (URE Informacja nr 55/2024 and nr 57/2025).
 - **K-groups**: Art. 70a ust. 1-5 of the Capacity Market Act (consolidated text Dz. U. 2023 poz. 2131, as amended):
@@ -238,18 +244,22 @@ legal advice.
   coefficient come from the amendment Dz. U. 2024 poz. 1847 as described in the Ministry of Climate's answer to
   interpellation 10848 (23 July 2025); whether the cap applies to the credit with or without the 1.23 coefficient
   was not verified.
-- **B23 charges** (checked on 31 October 2026): the per-MWh charges of the C&I site are those of the
+- **Tariff group and C23 charges** (checked on 31 October 2026): in the
   [TAURON Dystrybucja S.A. tariff for 2026](https://www.tauron-dystrybucja.pl/-/media/offer-documents/dystrybucja/aktualna-taryfa/taryfa-tauron-dystrybucja-2026_ocr.ashx),
-  approved by URE decision DRE.WRE.4211.54.8.2025.ASa1 of 17 December 2025: the variable network rate of group B23
-  (table 7.1: 49.64 / 56.10 / 37.48 PLN/MWh in the morning peak, evening peak and other hours), the quality rate
-  (33.16 PLN/MWh from 1 February 2026 after the PSE tariff change DRE.WPR.4211.1.4.2026.BTS; 33.06 PLN/MWh in
-  January), the OZE fee (7.30 PLN/MWh, URE Informacja nr 61/2025) and the cogeneration fee (3.00 PLN/MWh, Dz. U.
-  2025 poz. 1759), in total 93.10 / 99.56 / 80.94 PLN/MWh net. The zones are the tariff's: morning peak 07:00-12:59,
-  evening peak 16:00-20:59 (October-March) or 19:00-21:59 (April-September), all other hours, weekends and public
-  holidays in the third zone. The 2026 rates are applied to the whole window, although October-December 2025 fell
-  under the 2025 tariff. Other DSOs' B23 rates differ.
-- **Not modelled**: contracted-power exceedance charges and fixed network charges (DSO tariff), the 15-minute versus
-  hourly balancing of a household meter, VAT on the C&I side, and capacity-market obligations.
+  approved by URE decision DRE.WRE.4211.54.8.2025.ASa1 of 17 December 2025, groups B2x are supplied at medium
+  voltage and C2x at low voltage, both with more than 40 kW contracted power (B11 and C1x up to 40 kW). The site's
+  per-MWh charges are the variable network rate of C23 (table 7.1: 0.2498 / 0.3613 / 0.1780 PLN/kWh in the morning
+  peak, evening peak and other hours), the low-voltage quality rate (0.0332 PLN/kWh from 1 February 2026 after the
+  PSE tariff change DRE.WPR.4211.1.4.2026.BTS; 0.0331 PLN/kWh in January), the OZE fee (7.30 PLN/MWh, URE
+  Informacja nr 61/2025) and the cogeneration fee (3.00 PLN/MWh, Dz. U. 2025 poz. 1759), in total 293.30 / 404.80 /
+  221.50 PLN/MWh net. The zones are the tariff's: morning peak 07:00-12:59, evening peak 16:00-20:59
+  (October-March) or 19:00-21:59 (April-September), all other hours, weekends and public holidays in the third zone.
+  The 2026 rates are applied to the whole window, although October-December 2025 fell under the 2025 tariff. Other
+  DSOs' groups and rates differ.
+- **Not modelled**: contracted-power exceedance charges and fixed charges (the C23 fixed network rate of
+  17.52 PLN/kW/month for the 60 kW contracted power, the subscription fee), which are the same in every operating
+  mode, the 15-minute versus hourly balancing of a household meter, VAT on the C&I side, and capacity-market
+  obligations.
 
 ## Reproduce
 
@@ -275,7 +285,7 @@ the README charts to `docs/img/` and the dashboard data to `docs/data.js`. Every
   (C&I); there is no intraday re-planning and no look-ahead beyond midnight.
 - The daily MILP sees the day's EV trip energy at 00:00, before the car arrives at 17:30.
 - The deposit ledger starts empty on 1 October 2025 and runs for one billing year.
-- Household energy and distribution rates are illustrative; the B23 charges are one DSO's 2026 rates applied to the
+- Household energy and distribution rates are illustrative; the C23 charges are one DSO's 2026 rates applied to the
   whole window; the capacity-fee and net-billing rules are simplified (see above).
 
 ## Layout
@@ -314,6 +324,6 @@ these data and carry the same attributions.
   [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api), downloaded on
   21 October 2026, licensed **CC BY 4.0**; interpolated from hourly to 15-minute values. Contains modified Copernicus
   Climate Change Service information; neither the European Commission nor ECMWF is responsible for any use of it.
-- **B23 tariff**: rates quoted from the public TAURON Dystrybucja S.A. tariff for 2026 (see
+- **C23 tariff**: rates quoted from the public TAURON Dystrybucja S.A. tariff for 2026 (see
   [Regulatory assumptions](#regulatory-assumptions-to-be-verified)); the tariff document is not part of this
   repository.

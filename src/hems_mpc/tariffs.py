@@ -1,7 +1,7 @@
 """Polish retail & C&I electricity tariffs, net-billing deposit rules, and PSE capacity fee (K-factor).
 
 Energy rates and the household (G) distribution rates in `TariffSpec` are illustrative round numbers, not a specific
-supplier's or DSO's 2025/2026 tariff; the B23 variable charges come from one DSO's 2026 tariff. Statutory rules
+supplier's or DSO's 2025/2026 tariff; the C23 variable charges come from one DSO's 2026 tariff. Statutory rules
 carry a source in the docstrings; the legal state changes often, so every rule here is a simplification to be
 verified against the current act before any real use.
 """
@@ -60,7 +60,7 @@ def is_polish_holiday_or_weekend(dates: pd.Series | pd.DatetimeIndex) -> np.ndar
 class TariffSpec:
     """Parameters of a Polish household (G) or commercial/industrial (C/B) tariff (PLN/MWh net)."""
     name: str
-    kind: str  # "G11", "G12w", "DYNAMIC_G12w", "CI_B23_DYNAMIC"
+    kind: str  # "G11", "G12w", "DYNAMIC_G12w", "CI_C23_DYNAMIC"
     # Active energy prices for flat / 2-zone tariffs (PLN/MWh)
     energy_flat_pln_mwh: float = 620.0
     energy_peak_pln_mwh: float = 720.0
@@ -71,13 +71,15 @@ class TariffSpec:
     dist_flat_pln_mwh: float = 295.0
     dist_peak_pln_mwh: float = 345.0
     dist_offpeak_pln_mwh: float = 95.0
-    # B23 three-zone variable charges (morning peak, evening peak, rest): TAURON Dystrybucja tariff for 2026 (URE
-    # decision DRE.WRE.4211.54.8.2025.ASa1 of 17 Dec 2025), network rate 49.64 / 56.10 / 37.48 (table 7.1) + quality
-    # rate 33.16 (from 1 Feb 2026) + OZE fee 7.30 + cogeneration fee 3.00, all PLN/MWh net. Applied to the whole
-    # simulated window, including Oct-Dec 2025. To be verified.
-    dist_b23_morning_pln_mwh: float = 93.10
-    dist_b23_evening_pln_mwh: float = 99.56
-    dist_b23_offpeak_pln_mwh: float = 80.94
+    # C23 three-zone variable charges (morning peak, evening peak, rest) of a low-voltage site with more than 40 kW
+    # contracted power: TAURON Dystrybucja tariff for 2026 (URE decision DRE.WRE.4211.54.8.2025.ASa1 of 17 Dec 2025),
+    # network rate 249.80 / 361.30 / 178.00 (table 7.1) + quality rate 33.20 (low voltage, from 1 Feb 2026) + OZE fee
+    # 7.30 + cogeneration fee 3.00, all PLN/MWh net. Applied to the whole simulated window, including Oct-Dec 2025.
+    # The fixed charges (network 17.52 PLN/kW/month, subscription) do not depend on the operating mode and are left
+    # out. To be verified.
+    dist_c23_morning_pln_mwh: float = 293.30
+    dist_c23_evening_pln_mwh: float = 404.80
+    dist_c23_offpeak_pln_mwh: float = 221.50
     # Capacity fee (opłata mocowa) for non-household consumers, net PLN/MWh drawn in 07:00-21:59 on working days:
     # 0.1412 PLN/kWh for 1 Jul - 31 Dec 2025 (URE Informacja nr 26/2025 of 30 May 2025) and 0.2194 PLN/kWh for
     # 2026 (URE Informacja nr 58/2025 of 30 Oct 2025); hours per URE Informacja nr 57/2025. To be verified.
@@ -96,7 +98,7 @@ def build_price_frame(
     Separates:
     - `energy_buy_pln_mwh`: active energy component (can be offset by the prosumer net-billing deposit),
     - `dist_buy_pln_mwh`: variable distribution + quality/RES/cogeneration fees (always paid in cash),
-    - `cap_fee_base_pln_mwh`: capacity fee rate in its hours (C&I B23 only), before the K-factor,
+    - `cap_fee_base_pln_mwh`: capacity fee rate in its hours (C&I C23 only), before the K-factor,
     - `rce_raw_pln_mwh`: raw PSE RCE price,
     - `rce_credit_pln_mwh`: net-billing deposit credit per exported MWh in net-of-VAT terms, max(0, RCE).
       The statute credits 1.23 x the value to the deposit, which is then set against VAT-inclusive bills
@@ -123,9 +125,9 @@ def build_price_frame(
         energy_buy = np.maximum(0.0, sdac_pln_mwh + tariff.dynamic_margin_pln_mwh)
         dist_buy = np.where(g12w_offpeak, tariff.dist_offpeak_pln_mwh, tariff.dist_peak_pln_mwh)
         cap_window = np.zeros(len(ts_utc), dtype=bool)
-    elif tariff.kind == "CI_B23_DYNAMIC":
+    elif tariff.kind == "CI_C23_DYNAMIC":
         energy_buy = sdac_pln_mwh + tariff.dynamic_margin_pln_mwh
-        # B23 zones: morning peak 07:00-12:59, evening peak Oct-Mar 16:00-20:59 / Apr-Sep 19:00-21:59
+        # C23 zones: morning peak 07:00-12:59, evening peak Oct-Mar 16:00-20:59 / Apr-Sep 19:00-21:59
         is_winter = (month >= 10) | (month <= 3)
         morn_peak = (~free_day) & (hour >= 7) & (hour < 13)
         eve_peak = (~free_day) & (
@@ -134,8 +136,8 @@ def build_price_frame(
         )
         dist_buy = np.where(
             eve_peak,
-            tariff.dist_b23_evening_pln_mwh,
-            np.where(morn_peak, tariff.dist_b23_morning_pln_mwh, tariff.dist_b23_offpeak_pln_mwh),
+            tariff.dist_c23_evening_pln_mwh,
+            np.where(morn_peak, tariff.dist_c23_morning_pln_mwh, tariff.dist_c23_offpeak_pln_mwh),
         )
         # Capacity fee hours for 2025 and 2026: 15 hours from 07:00 to 21:59 on working days
         # (URE Informacja nr 55/2024 and nr 57/2025)
@@ -286,6 +288,8 @@ def compute_ci_k_factor(
 ) -> dict[str, float]:
     """Compute the daily capacity-fee group (K1..K4) and the capacity fee of a non-household site.
 
+    The groups apply to consumers billed per kWh, i.e. not to households and not to low-voltage sites with at most
+    16 kW contracted power, which pay a monthly flat rate until the end of 2027 (art. 89a ust. 1-2).
     Art. 70a of the Capacity Market Act (t.j. Dz. U. 2023 poz. 2131), as read here: the qualification period is
     one day (ust. 3); on a working day the difference is mean consumption in the fee hours over mean consumption
     in the other hours, minus one (ust. 2); groups K1..K4 and coefficients A are in `K_BANDS`, with K4 also when

@@ -1,4 +1,4 @@
-"""Controllers for the residential prosumer (PV+BESS+HP+EV) and the C&I site (B23 + capacity-fee K-factor)."""
+"""Controllers for the residential prosumer (PV+BESS+HP+EV) and the C&I site (C23 + capacity-fee K-factor)."""
 
 from __future__ import annotations
 
@@ -538,7 +538,7 @@ def solve_ci_day_milp(
     soc_min_kwh: float = 10.0,
     soc_max_kwh: float = 95.0,
     deg_cost_pln_mwh: float = 150.0,
-    limit_kw: float = 40.0,
+    limit_kw: float = 60.0,
     over_weight_pln_kwh: float = 10.0,
 ) -> dict[str, np.ndarray | str]:
     """Solve one day of the C&I site as a MILP that includes the capacity-fee K-group choice.
@@ -659,14 +659,17 @@ def simulate_ci_site(
     seed: int = 77,
     ratio_target: float = 1.04,
 ) -> tuple[dict[str, dict], dict[str, np.ndarray]]:
-    """Simulate a small C&I site (50 kWp PV, 100 kWh / 50 kW battery, 40 kW contracted power) on B23.
+    """Simulate a small C&I site (50 kWp PV, 100 kWh / 50 kW battery, 60 kW contracted power) on C23.
 
-    The load is synthetic (a parametric day-shift shape with noise, not measured data). Modes:
+    The load is synthetic (a parametric day-shift shape with noise, not measured data); it peaks at 56 kW, so the
+    contracted power is the next round value above it, which puts the low-voltage site in group C2x (more than 40 kW).
+    Modes:
       1. `no_bess`: PV only, curtailed when RCE <= 0
       2. `self_consumption`: battery charges from PV surplus and covers any deficit
-      3. `ratio_rule`: causal rule on working days: charge from the grid 00:00-06:59 as fast as the 40 kW limit
+      3. `ratio_rule`: causal rule on working days: charge from the grid 00:00-06:59 as fast as the contracted power
          allows, keep import in the fee hours at or below `ratio_target` x the mean import of 00:00-06:59 (and
-         below 40 kW), and lift import in 22:00-23:59 to that same mean by charging; free days as mode 2
+         below the contracted power), and lift import in 22:00-23:59 to that same mean by charging; free days as
+         mode 2
       4. `milp_oracle`: `solve_ci_day_milp` per local day on actual load, PV and prices (perfect foresight)
 
     Returns the annual summary per mode and the import series per mode (kW).
@@ -687,7 +690,7 @@ def simulate_ci_site(
     ci_load_kw = np.clip(ci_load_kw * rng.normal(1.0, 0.11, size=n), 12.0, 56.0)
     pv_ci_kw = pv_unit_kw * 5.0  # 50 kWp
 
-    contract_limit_kw = 40.0
+    contract_limit_kw = 60.0
     bess_p_kw = 50.0
     eta = 0.955
     soc_lo, soc_hi = 10.0, 95.0

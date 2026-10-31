@@ -16,7 +16,7 @@ def main() -> None:
             f"  [DYNAMIC_G12w | {r['strategy']:15s}] Net Cash Bill = {r['net_cash_bill_pln']:7.1f} PLN, "
             f"Wear = {r['bess_deg_cost_pln']:5.1f} PLN, Total = {r['total_economic_cost_pln']:7.1f} PLN"
         )
-    print("  C&I B23 Summary:")
+    print("  C&I C23 Summary:")
     for k, v in summary["ci_summary"].items():
         print(
             f"    [{k:18s}] Total Net = {v['annual_total_net_cost_pln']:8.0f} PLN/yr, "

@@ -3347,17 +3347,17 @@
       "self_consumption": {
         "capacity_fee_cut_pln": 22.0,
         "capacity_fee_cut_pct": 0.2,
-        "total_cost_cut_pln": 1991.0
+        "total_cost_cut_pln": 2508.0
       },
       "ratio_rule": {
         "capacity_fee_cut_pln": 10666.0,
         "capacity_fee_cut_pct": 73.5,
-        "total_cost_cut_pln": 11450.0
+        "total_cost_cut_pln": 12249.0
       },
       "milp_oracle": {
-        "capacity_fee_cut_pln": 11686.0,
-        "capacity_fee_cut_pct": 80.5,
-        "total_cost_cut_pln": 23615.0
+        "capacity_fee_cut_pln": 11869.0,
+        "capacity_fee_cut_pct": 81.8,
+        "total_cost_cut_pln": 25607.0
       }
     },
     "hil": {
@@ -3670,7 +3670,7 @@
   ],
   "ci_summary": {
     "no_bess": {
-      "annual_energy_dist_pln": 119359.0,
+      "annual_energy_dist_pln": 148598.0,
       "annual_capacity_fee_pln": 14518.0,
       "annual_capacity_fee_unmodulated_pln": 17592.0,
       "effective_k_mult": 0.825,
@@ -3682,13 +3682,13 @@
         "K4": 165
       },
       "max_import_kw": 55.3,
-      "quarters_above_limit_per_yr": 1138.0,
+      "quarters_above_limit_per_yr": 0.0,
       "annual_export_rev_pln": 273.0,
       "annual_deg_cost_pln": 0.0,
-      "annual_total_net_cost_pln": 133603.0
+      "annual_total_net_cost_pln": 162842.0
     },
     "self_consumption": {
-      "annual_energy_dist_pln": 116594.0,
+      "annual_energy_dist_pln": 145317.0,
       "annual_capacity_fee_pln": 14496.0,
       "annual_capacity_fee_unmodulated_pln": 17583.0,
       "effective_k_mult": 0.824,
@@ -3700,13 +3700,13 @@
         "K4": 165
       },
       "max_import_kw": 55.3,
-      "quarters_above_limit_per_yr": 1138.0,
+      "quarters_above_limit_per_yr": 0.0,
       "annual_export_rev_pln": 29.0,
       "annual_deg_cost_pln": 551.0,
-      "annual_total_net_cost_pln": 131612.0
+      "annual_total_net_cost_pln": 160334.0
     },
     "ratio_rule": {
-      "annual_energy_dist_pln": 115651.0,
+      "annual_energy_dist_pln": 144091.0,
       "annual_capacity_fee_pln": 3852.0,
       "annual_capacity_fee_unmodulated_pln": 15415.0,
       "effective_k_mult": 0.25,
@@ -3717,29 +3717,29 @@
         "K3": 7,
         "K4": 12
       },
-      "max_import_kw": 54.1,
-      "quarters_above_limit_per_yr": 253.0,
+      "max_import_kw": 60.0,
+      "quarters_above_limit_per_yr": 0.0,
       "annual_export_rev_pln": 30.0,
       "annual_deg_cost_pln": 2680.0,
-      "annual_total_net_cost_pln": 122153.0
+      "annual_total_net_cost_pln": 150593.0
     },
     "milp_oracle": {
-      "annual_energy_dist_pln": 102946.0,
-      "annual_capacity_fee_pln": 2832.0,
-      "annual_capacity_fee_unmodulated_pln": 16100.0,
-      "effective_k_mult": 0.176,
-      "k1_days_share_pct": 98.4,
+      "annual_energy_dist_pln": 129239.0,
+      "annual_capacity_fee_pln": 2649.0,
+      "annual_capacity_fee_unmodulated_pln": 15582.0,
+      "effective_k_mult": 0.17,
+      "k1_days_share_pct": 100.0,
       "k_days": {
-        "K1": 248,
-        "K2": 4,
+        "K1": 252,
+        "K2": 0,
         "K3": 0,
         "K4": 0
       },
-      "max_import_kw": 40.0,
+      "max_import_kw": 60.0,
       "quarters_above_limit_per_yr": 0.0,
-      "annual_export_rev_pln": 398.0,
-      "annual_deg_cost_pln": 4608.0,
-      "annual_total_net_cost_pln": 109988.0
+      "annual_export_rev_pln": 184.0,
+      "annual_deg_cost_pln": 5531.0,
+      "annual_total_net_cost_pln": 137235.0
     }
   },
   "ha_24h_frames": [

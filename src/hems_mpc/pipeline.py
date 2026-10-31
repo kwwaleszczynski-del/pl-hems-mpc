@@ -335,7 +335,7 @@ def generate_plots(
     axes[2].legend(loc="lower right", fontsize=8)
     _save(fig, img_dir / "dispatch_week.png")
 
-    # 3. C&I B23 site cost breakdown & K-factor
+    # 3. C&I C23 site cost breakdown & K-factor
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10.4, 4.0))
     modes = list(CI_MODES)
     labels = [CI_LABELS[m].replace(", ", ",\n") for m in modes]
@@ -343,11 +343,11 @@ def generate_plots(
     cap_cost = [ci_results[m]["annual_capacity_fee_pln"] / 1000.0 for m in modes]
 
     x_ci = np.arange(len(modes))
-    ax1.bar(x_ci, e_cost, width=0.5, label="Energy + B23 distribution", color=BLUE)
+    ax1.bar(x_ci, e_cost, width=0.5, label="Energy + C23 distribution", color=BLUE)
     ax1.bar(x_ci, cap_cost, width=0.5, bottom=e_cost, label="Capacity fee", color=WARM)
     ax1.set_xticks(x_ci, labels, fontsize=8)
     ax1.set_ylabel("Thousand PLN / year")
-    ax1.set_title("C&I site on B23: annual cost components", fontsize=10)
+    ax1.set_title("C&I site on C23: annual cost components", fontsize=10)
     ax1.set_ylim(0, 1.3 * max(np.array(e_cost) + np.array(cap_cost)))
     ax1.grid(axis="y", alpha=0.25)
     ax1.set_axisbelow(True)
@@ -582,17 +582,17 @@ def run_full_pipeline(output_root: Path | None = None) -> dict:
     df_prosumer_summary = pd.DataFrame(prosumer_rows)
     df_prosumer_summary.to_csv(results_dir / "prosumer_summary.csv", index=False)
 
-    # C&I B23 simulation
+    # C&I C23 simulation
     df_ci_prices = build_price_frame(
         ts_utc=ts_utc,
         sdac_pln_mwh=df_in["sdac_pln_mwh"].to_numpy(),
         rce_pln_mwh=df_in["rce_pln_mwh"].to_numpy(),
-        tariff=TariffSpec(name="C&I B23 Dynamic", kind="CI_B23_DYNAMIC"),
+        tariff=TariffSpec(name="C&I C23 Dynamic", kind="CI_C23_DYNAMIC"),
     )
     ci_results, _ = simulate_ci_site(df_ci_prices, pv_unit_kw=pv_avail_kw)
     ci_table = pd.DataFrame.from_dict(ci_results, orient="index")
     k_days = pd.DataFrame(list(ci_table.pop("k_days")), index=ci_table.index).add_prefix("days_")
-    ci_table.join(k_days).rename_axis("mode").to_csv(results_dir / "ci_b23_summary.csv")
+    ci_table.join(k_days).rename_axis("mode").to_csv(results_dir / "ci_c23_summary.csv")
 
     # Closed-loop Modbus TCP test
     df_dyn_mpc = saved_runs[("DYNAMIC_G12w", "mpc_forecast")]

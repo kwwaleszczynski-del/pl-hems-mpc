@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Home and C&amp;I energy management on Polish 15-minute prices</title>
-<meta name="description" content="Daily 15-minute MILP dispatch of rooftop PV, battery, heat pump and EV under Polish FIFO net-billing (RCE) and of a C&amp;I site on B23 with the capacity fee K-groups, replayed over a localhost Modbus TCP emulator and exported for Home Assistant.">
+<meta name="description" content="Daily 15-minute MILP dispatch of rooftop PV, battery, heat pump and EV under Polish FIFO net-billing (RCE) and of a low-voltage C&amp;I site on C23 with the capacity fee K-groups, replayed over a localhost Modbus TCP emulator and exported for Home Assistant.">
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous"></script>
 <script src="data.js"></script>
 <style>
@@ -75,15 +75,15 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 <h1>Home and C&amp;I energy management on 15-minute Polish prices</h1>
 <p>A Polish prosumer with rooftop PV, a battery, a heat pump and an EV charger sees two price signals at once: exports
 are credited to a 12-month FIFO deposit at the 15-minute market price RCE (floored at zero when RCE is negative), while
-imports pay a flat, two-zone or dynamic tariff plus cash distribution fees. A commercial site on B23 faces a second
-rule: on each working day the capacity fee (141.20 PLN/MWh until December 2025, 219.40 PLN/MWh in 2026, charged on
+imports pay a flat, two-zone or dynamic tariff plus cash distribution fees. A commercial low-voltage site on C23 faces
+a second rule: on each working day the capacity fee (141.20 PLN/MWh until December 2025, 219.40 PLN/MWh in 2026, charged on
 energy drawn 07:00-21:59) is multiplied by 0.17 when mean import in those hours stays within 5 % of mean import in the
 other hours (group K1). This project compares simple rules with a mixed-integer program solved once per day over the
 first full year of 15-minute prices (October 2025 to September 2026), runs the schedule against a localhost Modbus TCP
 inverter emulator with a watchdog, and exports the resulting entity states for Home Assistant. Code and method:
 <a href="https://github.com/kwwaleszczynski-del/pl-hems-mpc">github.com/kwwaleszczynski-del/pl-hems-mpc</a>.</p>
 <p class="warn">Household and C&amp;I loads are synthetic. Energy prices and household distribution rates are
-illustrative round numbers; the B23 per-MWh charges are those of the TAURON Dystrybucja 2026 tariff, applied to the
+illustrative round numbers; the C23 per-MWh charges are those of the TAURON Dystrybucja 2026 tariff, applied to the
 whole window. The net-billing and capacity-fee rules are simplified readings of the statutes (sources in the README)
 that must be verified before any real use. The Modbus register map belongs to the emulator only and must not be
 written to a real inverter.</p>
@@ -120,9 +120,9 @@ unused after 12 months is refunded.</p>
 <p id="weekText"></p>
 <div class="card"><div id="weekPlot" class="plot tall"></div></div>
 
-<h2>3. Commercial site on B23 and the capacity fee (Art. 70a)</h2>
-<p>A 50 kWp PV + 100 kWh / 50 kW battery site on B23 with a 40 kW contracted power and a synthetic day-shift load. The
-ratio rule is causal: it charges from the grid between 00:00 and 06:59, keeps import in the fee hours at or below 1.04
+<h2>3. Commercial site on C23 and the capacity fee (Art. 70a)</h2>
+<p>A 50 kWp PV + 100 kWh / 50 kW battery site on a low-voltage connection (group C23, 60 kW contracted power above the
+56 kW peak load) with a synthetic day-shift load. The ratio rule is causal: it charges from the grid between 00:00 and 06:59, keeps import in the fee hours at or below 1.04
 times the mean import of 00:00-06:59 and lifts import after 22:00 to that same mean. The MILP solves each day with
 perfect foresight and chooses the K-group as part of the optimum, so it is an upper bound.</p>
 <div class="two">
@@ -279,7 +279,7 @@ function renderCi() {
   const modes = Object.keys(CI_NAMES);
   const x = modes.map(m => CI_NAMES[m]);
   Plotly.react("ciPlot", [
-    {x, y: modes.map(m => C[m].annual_energy_dist_pln / 1000), name: "Energy + B23 dist.", type: "bar", marker: {color: css("--s1")}},
+    {x, y: modes.map(m => C[m].annual_energy_dist_pln / 1000), name: "Energy + C23 dist.", type: "bar", marker: {color: css("--s1")}},
     {x, y: modes.map(m => C[m].annual_capacity_fee_pln / 1000), name: "Capacity fee", type: "bar", marker: {color: css("--s4")}}
   ], baseLayout({
     barmode: "stack",
@@ -289,8 +289,8 @@ function renderCi() {
 
   document.getElementById("ciTable").innerHTML = `
     <thead><tr>
-      <th class="l">Operating mode</th><th>Energy + B23 [PLN]</th><th>Capacity fee [PLN]</th>
-      <th>Mean factor A</th><th>Days in K1</th><th>Quarter-hours &gt;40 kW</th><th>Battery wear</th><th>Net total [PLN/yr]</th>
+      <th class="l">Operating mode</th><th>Energy + C23 [PLN]</th><th>Capacity fee [PLN]</th>
+      <th>Mean factor A</th><th>Days in K1</th><th>Quarter-hours &gt;60 kW</th><th>Battery wear</th><th>Net total [PLN/yr]</th>
     </tr></thead>
     <tbody>${modes.map(k => {
       const r = C[k];
