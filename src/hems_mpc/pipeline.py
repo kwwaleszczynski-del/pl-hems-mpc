@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import textwrap
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -214,6 +215,16 @@ def _save(fig, path: Path) -> None:
     plt.close(fig)
 
 
+def _legend_below(fig, axes, ncol: int) -> None:
+    """One legend for all panels, under the figure, where it covers no data."""
+    handles, labels = [], []
+    for a in axes:
+        h, lab = a.get_legend_handles_labels()
+        handles += h
+        labels += lab
+    fig.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=ncol, fontsize=9, frameon=False)
+
+
 def generate_plots(
     df_prosumer_summary: pd.DataFrame,
     df_dyn_mpc: pd.DataFrame,
@@ -301,7 +312,6 @@ def generate_plots(
     axes[0].set_ylabel("PLN/MWh")
     axes[0].set_title("PL, 2026-05-01 .. 2026-05-03: quarter-hour prices and prosumer dispatch", fontsize=10)
     axes[0].grid(alpha=0.25)
-    axes[0].legend(loc="upper right", fontsize=8)
 
     axes[1].step(t_axis, s_mpc["pv_avail_kw"], where="post", label="Available PV", color=WARM, lw=0.9)
     axes[1].step(
@@ -325,45 +335,44 @@ def generate_plots(
     axes[1].set_ylabel("Power [kW]")
     axes[1].set_ylim(-6, 13.5)
     axes[1].grid(alpha=0.25)
-    axes[1].legend(loc="upper right", fontsize=8, ncol=2)
 
     axes[2].plot(t_axis, s_unc["soc_kwh"] * 10.0, label=STRATEGY_LABELS["uncontrolled"], color=GREY, lw=1.0)
     axes[2].plot(t_axis, s_mpc["soc_kwh"] * 10.0, label=STRATEGY_LABELS["mpc_forecast"], color=BLUE, lw=1.1)
     axes[2].set_ylabel("Battery SoC [%]")
     axes[2].set_ylim(5, 102)
     axes[2].grid(alpha=0.25)
-    axes[2].legend(loc="lower right", fontsize=8)
+    _legend_below(fig, axes, ncol=4)
     _save(fig, img_dir / "dispatch_week.png")
 
     # 3. C&I C23 site cost breakdown & K-factor
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10.4, 4.0))
     modes = list(CI_MODES)
-    labels = [CI_LABELS[m].replace(", ", ",\n") for m in modes]
+    labels = [textwrap.fill(CI_LABELS[m], 16) for m in modes]
     e_cost = [ci_results[m]["annual_energy_dist_pln"] / 1000.0 for m in modes]
     cap_cost = [ci_results[m]["annual_capacity_fee_pln"] / 1000.0 for m in modes]
 
     x_ci = np.arange(len(modes))
     ax1.bar(x_ci, e_cost, width=0.5, label="Energy + C23 distribution", color=BLUE)
     ax1.bar(x_ci, cap_cost, width=0.5, bottom=e_cost, label="Capacity fee", color=WARM)
-    ax1.set_xticks(x_ci, labels, fontsize=8)
+    ax1.set_xticks(x_ci, labels, fontsize=9)
     ax1.set_ylabel("Thousand PLN / year")
     ax1.set_title("C&I site on C23: annual cost components", fontsize=10)
     ax1.set_ylim(0, 1.3 * max(np.array(e_cost) + np.array(cap_cost)))
     ax1.grid(axis="y", alpha=0.25)
     ax1.set_axisbelow(True)
-    ax1.legend(loc="upper right", fontsize=8)
+    ax1.legend(loc="upper right", fontsize=9)
 
     k1_shares = [ci_results[m]["k1_days_share_pct"] for m in modes]
     k_mults = [ci_results[m]["effective_k_mult"] * 100.0 for m in modes]
     ax2.bar(x_ci - 0.16, k1_shares, width=0.30, label="Working days in K1 (<5 %)", color=BLUE)
     ax2.bar(x_ci + 0.16, k_mults, width=0.30, label="Mean factor A [%]", color=WARM)
-    ax2.set_xticks(x_ci, labels, fontsize=8)
+    ax2.set_xticks(x_ci, labels, fontsize=9)
     ax2.set_ylabel("Share of days / factor A [%]")
     ax2.set_ylim(0, 125)
     ax2.set_title("Capacity fee K-group (Art. 70a, daily)", fontsize=10)
     ax2.grid(axis="y", alpha=0.25)
     ax2.set_axisbelow(True)
-    ax2.legend(loc="upper left", fontsize=8)
+    ax2.legend(loc="upper left", fontsize=9)
     _save(fig, img_dir / "ci_k_factor.png")
 
     # 4. Modbus TCP closed-loop trace
@@ -378,7 +387,6 @@ def generate_plots(
     ax_a.set_ylim(-6, 10.5)
     ax_a.set_title("Modbus TCP loop on 1 May 2026: 45-minute heartbeat drop at 12:00", fontsize=10)
     ax_a.grid(alpha=0.25)
-    ax_a.legend(loc="upper left", fontsize=8)
 
     ax_b.plot(t_h, sub_hil["soc_pct"], label="Inverter SoC (reg 40010)", color=BLUE, lw=1.1)
     ax_b.fill_between(
@@ -402,7 +410,7 @@ def generate_plots(
     ax_b.set_ylabel("SoC [%]")
     ax_b.set_ylim(0, 108)
     ax_b.grid(alpha=0.25)
-    ax_b.legend(loc="lower left", fontsize=8)
+    _legend_below(fig, (ax_a, ax_b), ncol=3)
     _save(fig, img_dir / "modbus_hil_loop.png")
 
     # 5. Home Assistant entity states derived from the dispatch on 1 May 2026
